@@ -89,6 +89,10 @@ export class MockLocationStrategy extends LocationStrategy {
     }
   }
 
+  go(relativePosition: number = 0): void {
+    throw 'not implemented';
+  }
+
   forward(): void {
     throw 'not implemented';
   }

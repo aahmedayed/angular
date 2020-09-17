@@ -115,6 +115,10 @@ export class ServerPlatformLocation implements PlatformLocation {
     throw new Error('Not implemented');
   }
 
+  go(relativePosition: number = 0): void {
+    throw new Error('Not implemented');
+  }
+
   // History API isn't available on server, therefore return undefined
   getState(): unknown {
     return undefined;

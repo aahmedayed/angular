@@ -10,6 +10,7 @@ export declare class MockLocationStrategy extends LocationStrategy {
     forward(): void;
     getBaseHref(): string;
     getState(): unknown;
+    go(relativePosition?: number): void;
     onPopState(fn: (value: any) => void): void;
     path(includeHash?: boolean): string;
     prepareExternalUrl(internal: string): string;
@@ -33,6 +34,7 @@ export declare class MockPlatformLocation implements PlatformLocation {
     forward(): void;
     getBaseHrefFromDOM(): string;
     getState(): unknown;
+    go(relativePosition?: number): void;
     onHashChange(fn: LocationChangeListener): void;
     onPopState(fn: LocationChangeListener): void;
     pushState(state: any, title: string, newUrl: string): void;
@@ -50,6 +52,7 @@ export declare class SpyLocation implements Location {
     forward(): void;
     getState(): unknown;
     go(path: string, query?: string, state?: any): void;
+    goTo(relativePosition?: number): void;
     isCurrentPathEqualTo(path: string, query?: string): boolean;
     normalize(url: string): string;
     onUrlChange(fn: (url: string, state: unknown) => void): void;

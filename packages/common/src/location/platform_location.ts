@@ -58,6 +58,8 @@ export abstract class PlatformLocation {
   abstract forward(): void;
 
   abstract back(): void;
+
+  abstract go(relativePosition: number): void;
 }
 
 export function useBrowserPlatformLocation() {
@@ -177,6 +179,10 @@ export class BrowserPlatformLocation extends PlatformLocation {
 
   back(): void {
     this._history.back();
+  }
+
+  go(relativePosition: number = 0): void {
+    this._history.go(relativePosition);
   }
 
   getState(): unknown {

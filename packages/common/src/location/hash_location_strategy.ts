@@ -89,4 +89,8 @@ export class HashLocationStrategy extends LocationStrategy {
   back(): void {
     this._platformLocation.back();
   }
+
+  go(relativePosition: number = 0): void {
+    this._platformLocation.go(relativePosition);
+  }
 }

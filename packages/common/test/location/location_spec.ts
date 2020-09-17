@@ -81,6 +81,51 @@ describe('Location Class', () => {
 
       expect(location.getState()).toEqual({url: 'test1'});
     });
+
+    it('should work after using forward button', () => {
+      expect(location.getState()).toBe(null);
+
+      location.go('/test1', '', {url: 'test1'});
+      location.go('/test2', '', {url: 'test2'});
+      expect(location.getState()).toEqual({url: 'test2'});
+
+      location.back();
+      expect(location.getState()).toEqual({url: 'test1'});
+
+      location.forward();
+      expect(location.getState()).toEqual({url: 'test2'});
+    });
+
+    it('should work after using location.goTo()', () => {
+      expect(location.getState()).toBe(null);
+
+      location.go('/test1', '', {url: 'test1'});
+      location.go('/test2', '', {url: 'test2'});
+      location.go('/test3', '', {url: 'test3'});
+      expect(location.getState()).toEqual({url: 'test3'});
+
+      location.goTo(-2);
+      expect(location.getState()).toEqual({url: 'test1'});
+
+      location.goTo(2);
+      expect(location.getState()).toEqual({url: 'test3'});
+
+      location.go('/test3', '', {url: 'test4'});
+      location.goTo(0);
+      expect(location.getState()).toEqual({url: 'test4'});
+
+      location.goTo();
+      expect(location.getState()).toEqual({url: 'test4'});
+
+      location.goTo(100);
+      expect(location.getState()).toEqual({url: 'test4'});
+
+      location.goTo(-100);
+      expect(location.getState()).toEqual({url: 'test4'});
+
+      location.back();
+      expect(location.getState()).toEqual({url: 'test3'});
+    });
   });
 
   describe('location.onUrlChange()', () => {

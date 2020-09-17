@@ -36,6 +36,7 @@ export abstract class LocationStrategy {
   abstract replaceState(state: any, title: string, url: string, queryParams: string): void;
   abstract forward(): void;
   abstract back(): void;
+  abstract go(relativePosition: number): void;
   abstract onPopState(fn: LocationChangeListener): void;
   abstract getBaseHref(): string;
 }
@@ -161,5 +162,9 @@ export class PathLocationStrategy extends LocationStrategy {
 
   back(): void {
     this._platformLocation.back();
+  }
+
+  go(relativePosition: number = 0): void {
+    this._platformLocation.go(relativePosition);
   }
 }
