@@ -233,7 +233,9 @@ function defaultMalformedUriErrorHandler(
 }
 
 export type RestoredState = {
-  [k: string]: any; navigationId: number;
+  [k: string]: any,
+  navigationId: number,
+  ngRouterPageId?: number,
 };
 
 /**
@@ -303,6 +305,7 @@ export interface Navigation {
 
 export type NavigationTransition = {
   id: number,
+  targetPageId: number,
   currentUrlTree: UrlTree,
   currentRawUrl: UrlTree,
   extractedUrl: UrlTree,
@@ -409,6 +412,12 @@ export class Router {
    */
   private lastLocationChangeInfo: LocationChangeInfo|null = null;
   private navigationId: number = 0;
+
+  /**
+   * The id of the currently active page in the router.
+   * Updated to the transition's target id on a successful navigation.
+   */
+  private currentPageId: number = 0;
   private configLoader: RouterConfigLoader;
   private ngModule: NgModuleRef<any>;
   private console: Console;
@@ -502,6 +511,22 @@ export class Router {
   relativeLinkResolution: 'legacy'|'corrected' = 'corrected';
 
   /**
+   * TODO: Add this API option as public in a minor version
+   * @internal
+   * Configures how the Router attempts to restore state when a navigation is cancelled.
+   *
+   * 'replace' - Always uses `location.replaceState` to set the browser state to the state of the
+   * router before the navigation started.
+   *
+   * 'computed' - Will always return to the same state that corresponds to the actual Angular route
+   * when the navigation gets cancelled right after triggering a `popstate` event.
+   *
+   * The default value is `replace`
+   *
+   */
+  canceledNavigationResolution: 'replace'|'computed' = 'replace';
+
+  /**
    * Creates the router service.
    */
   // TODO: vsavkin make internal after the final is out.
@@ -527,6 +552,7 @@ export class Router {
 
     this.transitions = new BehaviorSubject<NavigationTransition>({
       id: 0,
+      targetPageId: 0,
       currentUrlTree: this.currentUrlTree,
       currentRawUrl: this.currentUrlTree,
       extractedUrl: this.urlHandlingStrategy.extract(this.currentUrlTree),
@@ -626,9 +652,11 @@ export class Router {
                              tap(t => {
                                if (this.urlUpdateStrategy === 'eager') {
                                  if (!t.extras.skipLocationChange) {
-                                   this.setBrowserUrl(
-                                       t.urlAfterRedirects, !!t.extras.replaceUrl, t.id,
-                                       t.extras.state);
+                                   this.setBrowserUrl(t.urlAfterRedirects, !!t.extras.replaceUrl, {
+                                     ...t.extras.state,
+                                     navigationId: t.id,
+                                     ngRouterPageId: t.targetPageId
+                                   });
                                  }
                                  this.browserUrlTree = t.urlAfterRedirects;
                                }
@@ -723,11 +751,7 @@ export class Router {
 
                      filter(t => {
                        if (!t.guardsResult) {
-                         this.resetUrlToCurrentUrlTree();
-                         const navCancel =
-                             new NavigationCancel(t.id, this.serializeUrl(t.extractedUrl), '');
-                         eventsSubject.next(navCancel);
-                         t.resolve(false);
+                         this.cancelNavigationTransition(t, '');
                          return false;
                        }
                        return true;
@@ -752,11 +776,9 @@ export class Router {
                                      next: () => dataResolved = true,
                                      complete: () => {
                                        if (!dataResolved) {
-                                         const navCancel = new NavigationCancel(
-                                             t.id, this.serializeUrl(t.extractedUrl),
+                                         this.cancelNavigationTransition(
+                                             t,
                                              `At least one route resolver didn't emit any value.`);
-                                         eventsSubject.next(navCancel);
-                                         t.resolve(false);
                                        }
                                      }
                                    }),
@@ -810,8 +832,11 @@ export class Router {
 
                        if (this.urlUpdateStrategy === 'deferred') {
                          if (!t.extras.skipLocationChange) {
-                           this.setBrowserUrl(
-                               this.rawUrlTree, !!t.extras.replaceUrl, t.id, t.extras.state);
+                           this.setBrowserUrl(this.rawUrlTree, !!t.extras.replaceUrl, {
+                             ...t.extras.state,
+                             navigationId: t.id,
+                             ngRouterPageId: t.targetPageId
+                           });
                          }
                          this.browserUrlTree = t.urlAfterRedirects;
                        }
@@ -845,13 +870,10 @@ export class Router {
                          // sync code which looks for a value here in order to determine whether or
                          // not to handle a given popstate event or to leave it to the Angular
                          // router.
-                         this.resetUrlToCurrentUrlTree();
-                         const navCancel = new NavigationCancel(
-                             t.id, this.serializeUrl(t.extractedUrl),
+                         this.cancelNavigationTransition(
+                             t,
                              `Navigation ID ${t.id} is not equal to the current navigation id ${
                                  this.navigationId}`);
-                         eventsSubject.next(navCancel);
-                         t.resolve(false);
                        }
                        // currentNavigation should always be reset to null here. If navigation was
                        // successful, lastSuccessfulTransition will have already been set. Therefore
@@ -895,7 +917,7 @@ export class Router {
                              };
 
                              this.scheduleNavigation(
-                                 mergedTree, 'imperative', null, extras,
+                                 mergedTree, 'imperative', t.restoredState, extras,
                                  {resolve: t.resolve, reject: t.reject, promise: t.promise});
                            }, 0);
                          }
@@ -974,6 +996,7 @@ export class Router {
             if (state) {
               const stateCopy = {...state} as Partial<RestoredState>;
               delete stateCopy.navigationId;
+              delete stateCopy.ngRouterPageId;
               if (Object.keys(stateCopy).length !== 0) {
                 extras.state = stateCopy;
               }
@@ -1184,7 +1207,15 @@ export class Router {
     const urlTree = isUrlTree(url) ? url : this.parseUrl(url);
     const mergedTree = this.urlHandlingStrategy.merge(urlTree, this.rawUrlTree);
 
-    return this.scheduleNavigation(mergedTree, 'imperative', null, extras);
+    let restoredState: RestoredState|null = null;
+    if (this.canceledNavigationResolution === 'computed') {
+      const isInitialPage = this.currentPageId === 0;
+      if (isInitialPage || extras.skipLocationChange || extras.replaceUrl) {
+        restoredState = this.location.getState() as RestoredState | null;
+      }
+    }
+
+    return this.scheduleNavigation(mergedTree, 'imperative', restoredState, extras);
   }
 
   /**
@@ -1289,6 +1320,7 @@ export class Router {
         t => {
           this.navigated = true;
           this.lastSuccessfulId = t.id;
+          this.currentPageId = t.targetPageId;
           (this.events as Subject<Event>)
               .next(new NavigationEnd(
                   t.id, this.serializeUrl(t.extractedUrl), this.serializeUrl(this.currentUrlTree)));
@@ -1348,8 +1380,20 @@ export class Router {
     }
 
     const id = ++this.navigationId;
+    let targetPageId: number = 0;
+    if (this.canceledNavigationResolution === 'computed') {
+      // If the `ngRouterPageId` exist in the state then `targetpageid` should have the value of
+      // `ngRouterPageId`
+      if (restoredState && restoredState.ngRouterPageId) {
+        targetPageId = restoredState.ngRouterPageId;
+      } else {
+        targetPageId = this.currentPageId + 1;
+      }
+    }
+
     this.setTransition({
       id,
+      targetPageId,
       source,
       restoredState,
       currentUrlTree: this.currentUrlTree,
@@ -1370,15 +1414,14 @@ export class Router {
     });
   }
 
-  private setBrowserUrl(
-      url: UrlTree, replaceUrl: boolean, id: number, state?: {[key: string]: any}) {
+  private setBrowserUrl(url: UrlTree, replaceUrl: boolean, state: RestoredState) {
     const path = this.urlSerializer.serialize(url);
-    state = state || {};
+    const stateCopy = this.generateNgRouterState(state);
     if (this.location.isCurrentPathEqualTo(path) || replaceUrl) {
       // TODO(jasonaden): Remove first `navigationId` and rely on `ng` namespace.
-      this.location.replaceState(path, '', {...state, navigationId: id});
+      this.location.replaceState(path, '', stateCopy);
     } else {
-      this.location.go(path, '', {...state, navigationId: id});
+      this.location.go(path, '', stateCopy);
     }
   }
 
@@ -1390,8 +1433,38 @@ export class Router {
   }
 
   private resetUrlToCurrentUrlTree(): void {
-    this.location.replaceState(
-        this.urlSerializer.serialize(this.rawUrlTree), '', {navigationId: this.lastSuccessfulId});
+    const ngRouterstate = this.generateNgRouterState(
+        {navigationId: this.lastSuccessfulId, ngRouterPageId: this.currentPageId});
+    this.location.replaceState(this.urlSerializer.serialize(this.rawUrlTree), '', ngRouterstate);
+  }
+
+  private cancelNavigationTransition(t: NavigationTransition, reason: string) {
+    if (this.canceledNavigationResolution === 'computed') {
+      if (t.source === 'popstate') {
+        // The navigator change the location before triggered the browser event,
+        // so we need to go back to the current url if the navigation is canceled.
+        const targetPagePosition = this.currentPageId - t.targetPageId;
+        this.location.historyGo(targetPagePosition);
+      }
+      // When navigation gets cancelled while using url update strategy eager, then we have to use
+      // `location#back` method. Because, when `urlUpdateSrategy` is `eager`; `setBrowserUrl` method
+      // is called before any verification.
+      else if (this.urlUpdateStrategy === 'eager') {
+        this.location.back();
+      }
+    } else {
+      this.resetUrlToCurrentUrlTree();
+    }
+    const navCancel = new NavigationCancel(t.id, this.serializeUrl(t.extractedUrl), reason);
+    this.triggerEvent(navCancel);
+    t.resolve(false);
+  }
+
+  private generateNgRouterState(state: RestoredState): RestoredState {
+    if (this.canceledNavigationResolution === 'replace') {
+      delete state.ngRouterPageId;
+    }
+    return state;
   }
 }
 

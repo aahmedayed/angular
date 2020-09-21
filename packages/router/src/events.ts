@@ -83,7 +83,7 @@ export class NavigationStart extends RouterEvent {
    * remembered state, such as scroll position.
    *
    */
-  restoredState?: {[k: string]: any, navigationId: number}|null;
+  restoredState?: {[k: string]: any, navigationId: number, ngRouterPageId?: number}|null;
 
   constructor(
       /** @docsNotRequired */
@@ -93,7 +93,8 @@ export class NavigationStart extends RouterEvent {
       /** @docsNotRequired */
       navigationTrigger: 'imperative'|'popstate'|'hashchange' = 'imperative',
       /** @docsNotRequired */
-      restoredState: {[k: string]: any, navigationId: number}|null = null) {
+      restoredState: {[k: string]: any, navigationId: number, ngRouterPageId?: number}|
+      null = null) {
     super(id, url);
     this.navigationTrigger = navigationTrigger;
     this.restoredState = restoredState;
