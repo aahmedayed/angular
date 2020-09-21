@@ -215,6 +215,7 @@ export declare class NavigationStart extends RouterEvent {
     restoredState?: {
         [k: string]: any;
         navigationId: number;
+        currentPageId: number;
     } | null;
     constructor(
     id: number,
@@ -223,6 +224,7 @@ export declare class NavigationStart extends RouterEvent {
     restoredState?: {
         [k: string]: any;
         navigationId: number;
+        currentPageId: number;
     } | null);
     toString(): string;
 }

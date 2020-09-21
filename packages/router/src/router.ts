@@ -230,7 +230,7 @@ function defaultMalformedUriErrorHandler(
 }
 
 export type RestoredState = {
-  [k: string]: any; navigationId: number;
+  [k: string]: any; navigationId: number; currentPageId: number;
 };
 
 /**
@@ -299,24 +299,23 @@ export type Navigation = {
 };
 
 export type NavigationTransition = {
-  id: number,
-  currentUrlTree: UrlTree,
-  currentRawUrl: UrlTree,
-  extractedUrl: UrlTree,
-  urlAfterRedirects: UrlTree,
-  rawUrl: UrlTree,
-  extras: NavigationExtras,
-  resolve: any,
-  reject: any,
-  promise: Promise<boolean>,
-  source: NavigationTrigger,
-  restoredState: RestoredState|null,
-  currentSnapshot: RouterStateSnapshot,
-  targetSnapshot: RouterStateSnapshot|null,
-  currentRouterState: RouterState,
-  targetRouterState: RouterState|null,
-  guards: Checks,
-  guardsResult: boolean|UrlTree|null,
+  id: number, targetPageId: number; currentUrlTree: UrlTree,
+                                    currentRawUrl: UrlTree,
+                                    extractedUrl: UrlTree,
+                                    urlAfterRedirects: UrlTree,
+                                    rawUrl: UrlTree,
+                                    extras: NavigationExtras,
+                                    resolve: any,
+                                    reject: any,
+                                    promise: Promise<boolean>,
+                                    source: NavigationTrigger,
+                                    restoredState: RestoredState | null,
+                                    currentSnapshot: RouterStateSnapshot,
+                                    targetSnapshot: RouterStateSnapshot | null,
+                                    currentRouterState: RouterState,
+                                    targetRouterState: RouterState | null,
+                                    guards: Checks,
+                                    guardsResult: boolean | UrlTree | null,
 };
 
 /**
@@ -382,6 +381,8 @@ export class Router {
    */
   private lastLocationChangeInfo: LocationChangeInfo|null = null;
   private navigationId: number = 0;
+  private currentPageId: number = 0;
+  private lastSuccessFulPageId: number = 0;
   private configLoader: RouterConfigLoader;
   private ngModule: NgModuleRef<any>;
   private console: Console;
@@ -500,6 +501,7 @@ export class Router {
 
     this.transitions = new BehaviorSubject<NavigationTransition>({
       id: 0,
+      targetPageId: 0,
       currentUrlTree: this.currentUrlTree,
       currentRawUrl: this.currentUrlTree,
       extractedUrl: this.urlHandlingStrategy.extract(this.currentUrlTree),
@@ -701,7 +703,15 @@ export class Router {
 
                      filter(t => {
                        if (!t.guardsResult) {
-                         this.resetUrlToCurrentUrlTree();
+                         // The navigator change the location before triggered the popstate event,
+                         // so we need to go back to the current url if the guard result is false.
+                         if (t.source !== 'imperative') {
+                           const targetPagePosition =
+                               this.lastSuccessFulPageId - this.currentPageId;
+                           this.location.goTo(targetPagePosition);
+                         } else {
+                           this.resetUrlToCurrentUrlTree();
+                         }
                          const navCancel =
                              new NavigationCancel(t.id, this.serializeUrl(t.extractedUrl), '');
                          eventsSubject.next(navCancel);
@@ -830,6 +840,11 @@ export class Router {
                                  this.navigationId}`);
                          eventsSubject.next(navCancel);
                          t.resolve(false);
+                       }
+                       // Must Reset the currentPageId to the lastSuccessfulId when the transition
+                       // navigation was canceled.
+                       if (t.targetPageId !== this.lastSuccessFulPageId) {
+                         this.currentPageId = this.lastSuccessFulPageId;
                        }
                        // currentNavigation should always be reset to null here. If navigation was
                        // successful, lastSuccessfulTransition will have already been set. Therefore
@@ -1234,6 +1249,7 @@ export class Router {
         t => {
           this.navigated = true;
           this.lastSuccessfulId = t.id;
+          this.lastSuccessFulPageId = t.targetPageId;
           (this.events as Subject<Event>)
               .next(new NavigationEnd(
                   t.id, this.serializeUrl(t.extractedUrl), this.serializeUrl(this.currentUrlTree)));
@@ -1291,8 +1307,24 @@ export class Router {
     }
 
     const id = ++this.navigationId;
+    let targetPageId: number = 0;
+    //  When we refresh the page or triggered a popstate/hashchange navigation event, we need to get
+    // `currentPageId` from the restoredState if it exist.
+    const isInitialPage = this.currentPageId === 0;
+    // Try to get the current state when page refreshed.
+    if (isInitialPage) {
+      restoredState = this.location.getState() as RestoredState | null;
+    }
+    const isNotImperativeNavigationTrigger = source !== 'imperative';
+    if (restoredState && restoredState.currentPageId &&
+        (isInitialPage || isNotImperativeNavigationTrigger)) {
+      targetPageId = this.currentPageId = restoredState.currentPageId;
+    } else {
+      targetPageId = ++this.currentPageId;
+    }
     this.setTransition({
       id,
+      targetPageId,
       source,
       restoredState,
       currentUrlTree: this.currentUrlTree,
@@ -1319,9 +1351,10 @@ export class Router {
     state = state || {};
     if (this.location.isCurrentPathEqualTo(path) || replaceUrl) {
       // TODO(jasonaden): Remove first `navigationId` and rely on `ng` namespace.
-      this.location.replaceState(path, '', {...state, navigationId: id});
+      this.location.replaceState(
+          path, '', {...state, navigationId: id, currentPageId: this.currentPageId});
     } else {
-      this.location.go(path, '', {...state, navigationId: id});
+      this.location.go(path, '', {...state, navigationId: id, currentPageId: this.currentPageId});
     }
   }
 
@@ -1334,7 +1367,8 @@ export class Router {
 
   private resetUrlToCurrentUrlTree(): void {
     this.location.replaceState(
-        this.urlSerializer.serialize(this.rawUrlTree), '', {navigationId: this.lastSuccessfulId});
+        this.urlSerializer.serialize(this.rawUrlTree), '',
+        {navigationId: this.lastSuccessfulId, currentPageId: this.lastSuccessFulPageId});
   }
 }
 

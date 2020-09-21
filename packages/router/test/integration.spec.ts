@@ -154,7 +154,7 @@ describe('Integration', () => {
          const history = (location as any)._history;
          expect(history[history.length - 1].state.foo).toBe('bar');
          expect(history[history.length - 1].state)
-             .toEqual({foo: 'bar', navigationId: history.length});
+             .toEqual({foo: 'bar', navigationId: history.length, currentPageId: history.length});
          expect(navigation.extras.state).toBeDefined();
          expect(navigation.extras.state).toEqual({foo: 'bar'});
        })));
@@ -183,7 +183,7 @@ describe('Integration', () => {
          tick();
 
          expect(navigation.extras.state).toBeDefined();
-         expect(navigation.extras.state).toEqual(state);
+         expect(navigation.extras.state).toEqual(jasmine.objectContaining(state));
        })));
 
     it('should navigate correctly when using `Location#goTo',
@@ -250,7 +250,7 @@ describe('Integration', () => {
 
          // Angular does not support restoring state to the primitive.
          expect(navigation.extras.state).toEqual(undefined);
-         expect(location.getState()).toEqual({navigationId: 3});
+         expect(location.getState()).toEqual({navigationId: 3, currentPageId: 3});
        })));
 
     it('should not pollute browser history when replaceUrl is set to true',
@@ -864,7 +864,7 @@ describe('Integration', () => {
          expect(fixture.nativeElement).toHaveText('team 33 [ , right:  ]');
        })));
 
-    it('should should set `state` with urlUpdateStrategy="eagar"',
+    it('should set `state` with urlUpdateStrategy="eagar"',
        fakeAsync(inject([Router, Location], (router: Router, location: SpyLocation) => {
          router.urlUpdateStrategy = 'eager';
          router.resetConfig([
@@ -886,7 +886,7 @@ describe('Integration', () => {
          const history = (location as any)._history;
          expect(history[history.length - 1].state.foo).toBe('bar');
          expect(history[history.length - 1].state)
-             .toEqual({foo: 'bar', navigationId: history.length});
+             .toEqual({foo: 'bar', navigationId: history.length, currentPageId: history.length});
          expect(navigation.extras.state).toBeDefined();
          expect(navigation.extras.state).toEqual({foo: 'bar'});
        })));
@@ -2396,7 +2396,7 @@ describe('Integration', () => {
         // Check the history entry
         const history = (location as any)._history;
         expect(history[history.length - 1].state)
-            .toEqual({foo: 'bar', navigationId: history.length});
+            .toEqual({foo: 'bar', navigationId: history.length, currentPageId: history.length});
       })));
     });
 
@@ -2768,8 +2768,8 @@ describe('Integration', () => {
 
         beforeEach(fakeAsync(() => {
           TestBed.configureTestingModule({imports: [TestModule]});
-          const router = TestBed.get(Router);
-          const location = TestBed.get(Location);
+          const router = TestBed.inject(Router);
+          const location = TestBed.inject(Location);
           fixture = createRoot(router, Parent);
 
           router.resetConfig([
@@ -2785,75 +2785,108 @@ describe('Integration', () => {
           // back and forward history.
           router.navigateByUrl('/first');
           advance(fixture);
+          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 2}));
+
           router.navigateByUrl('/second');
           advance(fixture);
+          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 3}));
+
           router.navigateByUrl('/third');
           advance(fixture);
+          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 4}));
+
           router.navigateByUrl('/fourth');
           advance(fixture);
+          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 5}));
+
           router.navigateByUrl('/fifth');
           advance(fixture);
+          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 6}));
+
           location.back();
           advance(fixture);
+          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 5}));
+
           location.back();
           advance(fixture);
+          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 4}));
         }));
 
-        // TODO(https://github.com/angular/angular/issues/13586)
-        // A fix to this requires much more design
-        xit('when navigate back using Back button', fakeAsync(() => {
-              const location = TestBed.get(Location);
-              expect(location.path()).toEqual('/third');
-
-              TestBed.get(MyGuard).allow = false;
-              location.back();
-              advance(fixture);
-              expect(location.path()).toEqual('/third');
-              expect(fixture.nativeElement).toHaveText('child3');
-
-              TestBed.get(MyGuard).allow = true;
-              location.back();
-              advance(fixture);
-              expect(location.path()).toEqual('/second');
-              expect(fixture.nativeElement).toHaveText('child2');
-            }));
-
-        it('when navigate back imperatively', fakeAsync(() => {
-             const router = TestBed.get(Router);
-             const location = TestBed.get(Location);
+        it('when navigate back using Back button', fakeAsync(() => {
+             const location = TestBed.inject(Location);
              expect(location.path()).toEqual('/third');
 
-             TestBed.get(MyGuard).allow = false;
-             router.navigateByUrl('/second');
+             TestBed.inject(MyGuard).allow = false;
+             location.back();
+             advance(fixture);
+             expect(location.path()).toEqual('/third');
+             expect(fixture.nativeElement).toHaveText('child3');
+             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 4}));
+
+             location.goTo(-2);
              advance(fixture);
              expect(location.path()).toEqual('/third');
              expect(fixture.nativeElement).toHaveText('child3');
 
-             TestBed.get(MyGuard).allow = true;
+             TestBed.inject(MyGuard).allow = true;
              location.back();
              advance(fixture);
              expect(location.path()).toEqual('/second');
              expect(fixture.nativeElement).toHaveText('child2');
+             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 3}));
            }));
 
-        // TODO(https://github.com/angular/angular/issues/13586)
-        // A fix to this requires much more design
-        xit('when navigate back using Foward button', fakeAsync(() => {
-              const location = TestBed.get(Location);
-              expect(location.path()).toEqual('/third');
+        it('when navigate back imperatively', fakeAsync(() => {
+             const router = TestBed.inject(Router);
+             const location = TestBed.inject(Location);
+             expect(location.path()).toEqual('/third');
 
-              TestBed.get(MyGuard).allow = false;
-              location.forward();
-              advance(fixture);
-              expect(location.path()).toEqual('/third');
-              expect(fixture.nativeElement).toHaveText('child3');
+             TestBed.inject(MyGuard).allow = false;
+             router.navigateByUrl('/second');
+             advance(fixture);
+             expect(location.path()).toEqual('/third');
+             expect(fixture.nativeElement).toHaveText('child3');
+             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 4}));
 
-              TestBed.get(MyGuard).allow = true;
-              location.forward();
-              advance(fixture);
-              expect(location.path()).toEqual('/fourth');
-              expect(fixture.nativeElement).toHaveText('child4');
-            }));
+             TestBed.inject(MyGuard).allow = true;
+             location.back();
+             advance(fixture);
+             expect(location.path()).toEqual('/second');
+             expect(fixture.nativeElement).toHaveText('child2');
+             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 3}));
+           }));
+
+        it('when navigate back using Foward button', fakeAsync(() => {
+             const location = TestBed.inject(Location);
+             expect(location.path()).toEqual('/third');
+
+             TestBed.inject(MyGuard).allow = false;
+             location.forward();
+             advance(fixture);
+             expect(location.path()).toEqual('/third');
+             expect(fixture.nativeElement).toHaveText('child3');
+             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 4}));
+
+             location.goTo(2);
+             advance(fixture);
+             expect(location.path()).toEqual('/third');
+             expect(fixture.nativeElement).toHaveText('child3');
+
+             TestBed.inject(MyGuard).allow = true;
+             location.forward();
+             advance(fixture);
+             expect(location.path()).toEqual('/fourth');
+             expect(fixture.nativeElement).toHaveText('child4');
+             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 5}));
+
+
+             location.back();
+             location.goTo(2);
+             advance(fixture);
+             expect(location.path()).toEqual('/fifth');
+             expect(fixture.nativeElement).toHaveText('child5');
+             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 6}));
+           }));
 
         it('when navigate forward imperatively', fakeAsync(() => {
              const router = TestBed.get(Router);
