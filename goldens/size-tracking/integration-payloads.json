@@ -38,10 +38,10 @@
   "cli-hello-world-lazy": {
     "master": {
       "uncompressed": {
-        "runtime-es2015": 2285,
-        "main-es2015": 241879,
-        "polyfills-es2015": 36709,
-        "5-es2015": 745
+        "runtime-es2015": 2289,
+        "main-es2015": 243243,
+        "polyfills-es2015": 36938,
+        "5-es2015": 751
       }
     }
   },
@@ -49,7 +49,7 @@
     "master": {
       "uncompressed": {
         "runtime-es2015": 2289,
-        "main-es2015": 218507,
+        "main-es2015": 219683,
         "polyfills-es2015": 36723,
         "5-es2015": 781
       }
