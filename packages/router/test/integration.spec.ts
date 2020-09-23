@@ -1476,6 +1476,7 @@ describe('Integration', () => {
 
        router.navigateByUrl('/simple');
        advance(fixture);
+       expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 2}));
 
        let routerUrlBeforeEmittingError = '';
        let locationUrlBeforeEmittingError = '';
@@ -1491,6 +1492,7 @@ describe('Integration', () => {
 
        expect(routerUrlBeforeEmittingError).toEqual('/simple');
        expect(locationUrlBeforeEmittingError).toEqual('/simple');
+       expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 2}));
      }));
 
   it('should support custom error handlers', fakeAsync(inject([Router], (router: Router) => {
@@ -2683,10 +2685,12 @@ describe('Integration', () => {
              router.navigateByUrl('/one');
              advance(fixture);
              expect(location.path()).toEqual('/one');
+             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 2}));
 
              location.go('/two');
              advance(fixture);
              expect(location.path()).toEqual('/one');
+             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 2}));
            })));
       });
 
@@ -3999,6 +4003,7 @@ describe('Integration', () => {
                advance(fixture);
 
                expect(location.path()).toEqual('/');
+               expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 1}));
 
                expectEvents(recordedEvents, [
                  [NavigationStart, '/lazyFalse/loaded'],
@@ -4013,6 +4018,7 @@ describe('Integration', () => {
                advance(fixture);
 
                expect(location.path()).toEqual('/lazyTrue/loaded');
+               expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 2}));
 
                expectEvents(recordedEvents, [
                  [NavigationStart, '/lazyTrue/loaded'],
@@ -4052,6 +4058,7 @@ describe('Integration', () => {
            advance(fixture);
 
            expect(location.path()).toEqual('/blank');
+           expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 1}));
 
            expectEvents(recordedEvents, [
              [NavigationStart, '/lazyFalse/loaded'],
