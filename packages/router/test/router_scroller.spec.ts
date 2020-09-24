@@ -67,7 +67,7 @@ describe('RouterScroller', () => {
       setScroll(viewportScroller, 20, 200);
       expect(viewportScroller.scrollToPosition).toHaveBeenCalledWith([0, 0]);
 
-      events.next(new NavigationStart(3, '/a', 'popstate', {navigationId: 1, currentPageId: 1}));
+      events.next(new NavigationStart(3, '/a', 'popstate', {navigationId: 1, ngRouterPageId: 1}));
       events.next(new NavigationEnd(3, '/a', '/a'));
       expect(viewportScroller.scrollToPosition).toHaveBeenCalledWith([10, 100]);
     });
@@ -107,7 +107,7 @@ describe('RouterScroller', () => {
 
       // we never scroll to anchor when navigating back
       events.next(
-          new NavigationStart(3, '/a#anchor', 'popstate', {navigationId: 1, currentPageId: 1}));
+          new NavigationStart(3, '/a#anchor', 'popstate', {navigationId: 1, ngRouterPageId: 1}));
       events.next(new NavigationEnd(3, '/a#anchor', '/a#anchor'));
       expect(viewportScroller.scrollToAnchor).not.toHaveBeenCalled();
       expect(viewportScroller.scrollToPosition).toHaveBeenCalledWith([0, 0]);
@@ -145,13 +145,15 @@ describe('RouterScroller', () => {
          events.next(new NavigationEnd(3, '/c', '/c'));
          setScroll(viewportScroller, 30, 300);
 
-         events.next(new NavigationStart(4, '/a', 'popstate', {navigationId: 1, currentPageId: 1}));
+         events.next(
+             new NavigationStart(4, '/a', 'popstate', {navigationId: 1, ngRouterPageId: 1}));
          events.next(new NavigationEnd(4, '/a', '/a'));
 
          tick(500);
          expect(viewportScroller.scrollToPosition).not.toHaveBeenCalled();
 
-         events.next(new NavigationStart(5, '/a', 'popstate', {navigationId: 1, currentPageId: 1}));
+         events.next(
+             new NavigationStart(5, '/a', 'popstate', {navigationId: 1, ngRouterPageId: 1}));
          events.next(new NavigationEnd(5, '/a', '/a'));
 
          tick(5000);

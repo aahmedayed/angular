@@ -13,7 +13,7 @@ import {ComponentFixture, fakeAsync, inject, TestBed, tick} from '@angular/core/
 import {By} from '@angular/platform-browser/src/dom/debug/by';
 import {expect} from '@angular/platform-browser/testing/src/matchers';
 import {ActivatedRoute, ActivatedRouteSnapshot, ActivationEnd, ActivationStart, CanActivate, CanDeactivate, ChildActivationEnd, ChildActivationStart, DefaultUrlSerializer, DetachedRouteHandle, Event, GuardsCheckEnd, GuardsCheckStart, Navigation, NavigationCancel, NavigationEnd, NavigationError, NavigationStart, ParamMap, Params, PreloadAllModules, PreloadingStrategy, PRIMARY_OUTLET, Resolve, ResolveEnd, ResolveStart, RouteConfigLoadEnd, RouteConfigLoadStart, Router, RouteReuseStrategy, RouterEvent, RouterModule, RouterPreloader, RouterStateSnapshot, RoutesRecognized, RunGuardsAndResolvers, UrlHandlingStrategy, UrlSegmentGroup, UrlSerializer, UrlTree} from '@angular/router';
-import {EMPTY, Observable, Observer, of, Subscription} from 'rxjs';
+import {EMPTY, NEVER, Observable, Observer, of, Subscription} from 'rxjs';
 import {delay, filter, first, map, mapTo, tap} from 'rxjs/operators';
 
 import {forEach} from '../src/utils/collection';
@@ -154,7 +154,7 @@ describe('Integration', () => {
          const history = (location as any)._history;
          expect(history[history.length - 1].state.foo).toBe('bar');
          expect(history[history.length - 1].state)
-             .toEqual({foo: 'bar', navigationId: history.length, currentPageId: history.length});
+             .toEqual({foo: 'bar', navigationId: history.length, ngRouterPageId: history.length});
          expect(navigation.extras.state).toBeDefined();
          expect(navigation.extras.state).toEqual({foo: 'bar'});
        })));
@@ -250,7 +250,7 @@ describe('Integration', () => {
 
          // Angular does not support restoring state to the primitive.
          expect(navigation.extras.state).toEqual(undefined);
-         expect(location.getState()).toEqual({navigationId: 3, currentPageId: 3});
+         expect(location.getState()).toEqual({navigationId: 3, ngRouterPageId: 3});
        })));
 
     it('should not pollute browser history when replaceUrl is set to true',
@@ -886,7 +886,7 @@ describe('Integration', () => {
          const history = (location as any)._history;
          expect(history[history.length - 1].state.foo).toBe('bar');
          expect(history[history.length - 1].state)
-             .toEqual({foo: 'bar', navigationId: history.length, currentPageId: history.length});
+             .toEqual({foo: 'bar', navigationId: history.length, ngRouterPageId: history.length});
          expect(navigation.extras.state).toBeDefined();
          expect(navigation.extras.state).toEqual({foo: 'bar'});
        })));
@@ -1476,7 +1476,6 @@ describe('Integration', () => {
 
        router.navigateByUrl('/simple');
        advance(fixture);
-       expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 2}));
 
        let routerUrlBeforeEmittingError = '';
        let locationUrlBeforeEmittingError = '';
@@ -1492,7 +1491,6 @@ describe('Integration', () => {
 
        expect(routerUrlBeforeEmittingError).toEqual('/simple');
        expect(locationUrlBeforeEmittingError).toEqual('/simple');
-       expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 2}));
      }));
 
   it('should support custom error handlers', fakeAsync(inject([Router], (router: Router) => {
@@ -2398,7 +2396,7 @@ describe('Integration', () => {
         // Check the history entry
         const history = (location as any)._history;
         expect(history[history.length - 1].state)
-            .toEqual({foo: 'bar', navigationId: history.length, currentPageId: history.length});
+            .toEqual({foo: 'bar', navigationId: history.length, ngRouterPageId: history.length});
       })));
     });
 
@@ -2496,7 +2494,254 @@ describe('Integration', () => {
          expect(location.path()).toEqual('/initial');
        })));
   });
+  describe('`restoredState#ngRouterPageId`', () => {
+    @Injectable({providedIn: 'root'})
+    class MyGuard implements CanDeactivate<any> {
+      allow: boolean = true;
+      canDeactivate(): boolean {
+        return this.allow;
+      }
+    }
+    beforeEach(() => {
+      TestBed.configureTestingModule({
+        providers: [
+          {provide: 'alwaysFalse', useValue: (a: any, b: any) => false},
+          {provide: 'returnsFalse', useValue: () => false},
+          {provide: 'resolveEmpty', useValue: (a: any, b: any) => EMPTY},
+          {provide: 'resolveNever', useValue: (a: any, b: any) => NEVER}
+        ]
+      });
+    });
+    it('should work when CanActivate returns false',
+       fakeAsync(inject([Router, Location], (router: Router, location: Location) => {
+         const fixture = TestBed.createComponent(RootCmp);
+         router.resetConfig([
+           {path: 'guard', component: SimpleCmp, canActivate: ['alwaysFalse']},
+           {path: 'two', component: SimpleCmp},
+           {path: 'three', component: SimpleCmp},
 
+         ]);
+
+         router.navigateByUrl('/guard');
+         advance(fixture);
+
+         router.navigateByUrl('/two');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+
+         router.navigateByUrl('/guard');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+
+         router.navigateByUrl('/three');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 3}));
+         expect(location.path()).toEqual('/three');
+
+         location.back();
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+       })));
+
+    it('should work when CanDeactivate returns false',
+       fakeAsync(inject([Router, Location], (router: Router, location: Location) => {
+         const fixture = TestBed.createComponent(RootCmp);
+         router.resetConfig([
+           {path: 'guard', component: SimpleCmp, canDeactivate: [MyGuard]},
+           {path: 'two', component: SimpleCmp},
+           {path: 'three', component: SimpleCmp},
+
+         ]);
+         router.navigateByUrl('/guard');
+         advance(fixture);
+
+         TestBed.inject(MyGuard).allow = false;
+
+         router.navigateByUrl('/two');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 1}));
+         expect(location.path()).toEqual('/guard');
+
+         TestBed.inject(MyGuard).allow = true;
+
+         router.navigateByUrl('/two');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+
+         location.back();
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 1}));
+         expect(location.path()).toEqual('/guard');
+       })));
+
+    it('should work when CanLoad returns false',
+       fakeAsync(inject([Router, Location], (router: Router, location: Location) => {
+         const fixture = TestBed.createComponent(RootCmp);
+         router.resetConfig([
+           {path: 'canLoad', loadChildren: 'doesnotmatter', canLoad: ['returnsFalse']},
+           {path: 'two', component: SimpleCmp},
+           {path: 'three', component: SimpleCmp},
+         ]);
+
+         router.navigateByUrl('/canLoad');
+         advance(fixture);
+
+         router.navigateByUrl('/two');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+
+         router.navigateByUrl('/canLoad');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+
+         router.navigateByUrl('/three');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 3}));
+         expect(location.path()).toEqual('/three');
+
+         location.back();
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+       })));
+
+    it('should work when using `NavigationExtras.skipLocationChange`',
+       fakeAsync(inject([Router, Location], (router: Router, location: Location) => {
+         const fixture = TestBed.createComponent(RootCmp);
+         advance(fixture);
+
+         router.resetConfig([
+           {path: 'one', component: SimpleCmp},
+           {path: 'two', component: SimpleCmp},
+           {path: 'three', component: SimpleCmp},
+         ]);
+
+         router.navigateByUrl('/one', {skipLocationChange: true});
+         advance(fixture);
+
+         router.navigateByUrl('/two');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+
+
+         router.navigateByUrl('/three');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 3}));
+         expect(location.path()).toEqual('/three');
+
+         router.navigateByUrl('/two', {skipLocationChange: true});
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 3}));
+         expect(location.path()).toEqual('/three');
+
+         location.back();
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+       })));
+
+    it('should work when resolve empty',
+       fakeAsync(inject([Router, Location], (router: Router, location: Location) => {
+         const fixture = TestBed.createComponent(RootCmp);
+         router.resetConfig([
+           {path: 'throwing', component: SimpleCmp, resolve: {e1: 'resolveEmpty'}},
+           {path: 'two', component: SimpleCmp},
+           {path: 'three', component: SimpleCmp},
+         ]);
+
+         router.navigateByUrl('/throwing');
+         advance(fixture);
+
+         router.navigateByUrl('/two');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+
+         router.navigateByUrl('/throwing');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+
+         router.navigateByUrl('/three');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 3}));
+         expect(location.path()).toEqual('/three');
+
+         location.back();
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+       })));
+
+    it(`should work when resolve dosn't return value yet`,
+       fakeAsync(inject([Router, Location], (router: Router, location: Location) => {
+         const fixture = TestBed.createComponent(RootCmp);
+         router.resetConfig([
+           {path: 'throwing', component: SimpleCmp, resolve: {e1: 'resolveNever'}},
+           {path: 'two', component: SimpleCmp},
+           {path: 'three', component: SimpleCmp},
+         ]);
+
+         router.navigateByUrl('/throwing');
+         advance(fixture);
+
+         router.navigateByUrl('/two');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+
+         router.navigateByUrl('/throwing');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+
+         router.navigateByUrl('/three');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 3}));
+         expect(location.path()).toEqual('/three');
+
+         location.back();
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/two');
+       })));
+
+    it('should work when an error occured during navigation',
+       fakeAsync(inject([Router, Location], (router: Router, location: Location) => {
+         const fixture = TestBed.createComponent(RootCmp);
+         router.resetConfig([
+           {path: 'one', component: SimpleCmp},
+           {path: 'throwing', component: ThrowingCmp},
+           {path: 'three', component: SimpleCmp},
+         ]);
+         router.navigateByUrl('/one');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 1}));
+         expect(location.path()).toEqual('/one');
+
+         router.navigateByUrl('/throwing').catch(() => null);
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 1}));
+         expect(location.path()).toEqual('/one');
+
+         router.navigateByUrl('/three');
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
+         expect(location.path()).toEqual('/three');
+
+         location.back();
+         advance(fixture);
+         expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 1}));
+         expect(location.path()).toEqual('/one');
+       })));
+  });
   describe('guards', () => {
     describe('CanActivate', () => {
       describe('should not activate a route when CanActivate returns false', () => {
@@ -2685,12 +2930,12 @@ describe('Integration', () => {
              router.navigateByUrl('/one');
              advance(fixture);
              expect(location.path()).toEqual('/one');
-             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 2}));
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
 
              location.go('/two');
              advance(fixture);
              expect(location.path()).toEqual('/one');
-             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 2}));
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
            })));
       });
 
@@ -2725,10 +2970,26 @@ describe('Integration', () => {
 
       describe('should not break the history', () => {
         @Injectable({providedIn: 'root'})
-        class MyGuard implements CanDeactivate<any> {
+        class MyCanDeactivateGuard implements CanDeactivate<any> {
           allow: boolean = true;
           canDeactivate(): boolean {
             return this.allow;
+          }
+        }
+
+        @Injectable({providedIn: 'root'})
+        class MyCanActivateGuard implements CanActivate {
+          allow: boolean = true;
+          canActivate(): boolean {
+            return this.allow;
+          }
+        }
+
+        @Injectable({providedIn: 'root'})
+        class MyResolve implements Resolve<Observable<any>> {
+          myresolve: Observable<any> = of(2);
+          resolve(): Observable<any> {
+            return this.myresolve;
           }
         }
 
@@ -2778,66 +3039,89 @@ describe('Integration', () => {
 
           router.resetConfig([
             {path: '', component: Home},
-            {path: 'first', component: Child1},
-            {path: 'second', component: Child2},
-            {path: 'third', component: Child3, canDeactivate: [MyGuard]},
-            {path: 'fourth', component: Child4},
-            {path: 'fifth', component: Child5},
+            {path: 'first', component: Child1, canActivate: [MyCanActivateGuard]},
+            {path: 'second', component: Child2, resolve: [MyResolve]},
+            {path: 'third', component: Child3, canDeactivate: [MyCanDeactivateGuard]},
+            {path: 'fourth', component: Child4, resolve: [MyResolve]},
+            {path: 'fifth', component: Child5, canActivate: [MyCanActivateGuard]},
           ]);
 
           // Create a navigation history of pages 1-5, and go back to 3 so that there is both
           // back and forward history.
           router.navigateByUrl('/first');
           advance(fixture);
-          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 2}));
 
           router.navigateByUrl('/second');
           advance(fixture);
-          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 3}));
 
           router.navigateByUrl('/third');
           advance(fixture);
-          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 4}));
 
           router.navigateByUrl('/fourth');
           advance(fixture);
-          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 5}));
 
           router.navigateByUrl('/fifth');
           advance(fixture);
-          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 6}));
 
           location.back();
           advance(fixture);
-          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 5}));
 
           location.back();
           advance(fixture);
-          expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 4}));
         }));
 
         it('when navigate back using Back button', fakeAsync(() => {
              const location = TestBed.inject(Location);
              expect(location.path()).toEqual('/third');
 
-             TestBed.inject(MyGuard).allow = false;
+             TestBed.inject(MyCanDeactivateGuard).allow = false;
              location.back();
              advance(fixture);
              expect(location.path()).toEqual('/third');
              expect(fixture.nativeElement).toHaveText('child3');
-             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 4}));
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 4}));
 
              location.goTo(-2);
              advance(fixture);
              expect(location.path()).toEqual('/third');
              expect(fixture.nativeElement).toHaveText('child3');
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 4}));
 
-             TestBed.inject(MyGuard).allow = true;
+             TestBed.inject(MyCanDeactivateGuard).allow = true;
+
+             TestBed.inject(MyCanActivateGuard).allow = false;
+             location.goTo(-2);
+             advance(fixture);
+             expect(location.path()).toEqual('/third');
+             expect(fixture.nativeElement).toHaveText('child3');
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 4}));
+
+             TestBed.inject(MyResolve).myresolve = EMPTY;
+             location.back();
+             advance(fixture);
+             expect(location.path()).toEqual('/third');
+             expect(fixture.nativeElement).toHaveText('child3');
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 4}));
+
+             TestBed.inject(MyResolve).myresolve = of(2);
              location.back();
              advance(fixture);
              expect(location.path()).toEqual('/second');
              expect(fixture.nativeElement).toHaveText('child2');
-             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 3}));
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 3}));
+
+             location.back();
+             advance(fixture);
+             expect(location.path()).toEqual('/second');
+             expect(fixture.nativeElement).toHaveText('child2');
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 3}));
+
+             TestBed.inject(MyCanActivateGuard).allow = true;
+             location.back();
+             advance(fixture);
+             expect(location.path()).toEqual('/first');
+             expect(fixture.nativeElement).toHaveText('child1');
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
            }));
 
         it('when navigate back imperatively', fakeAsync(() => {
@@ -2845,51 +3129,73 @@ describe('Integration', () => {
              const location = TestBed.inject(Location);
              expect(location.path()).toEqual('/third');
 
-             TestBed.inject(MyGuard).allow = false;
+             TestBed.inject(MyCanDeactivateGuard).allow = false;
              router.navigateByUrl('/second');
              advance(fixture);
              expect(location.path()).toEqual('/third');
              expect(fixture.nativeElement).toHaveText('child3');
-             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 4}));
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 4}));
 
-             TestBed.inject(MyGuard).allow = true;
+             TestBed.inject(MyCanDeactivateGuard).allow = true;
              location.back();
              advance(fixture);
              expect(location.path()).toEqual('/second');
              expect(fixture.nativeElement).toHaveText('child2');
-             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 3}));
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 3}));
            }));
 
         it('when navigate back using Foward button', fakeAsync(() => {
              const location = TestBed.inject(Location);
              expect(location.path()).toEqual('/third');
 
-             TestBed.inject(MyGuard).allow = false;
+             TestBed.inject(MyCanDeactivateGuard).allow = false;
              location.forward();
              advance(fixture);
              expect(location.path()).toEqual('/third');
              expect(fixture.nativeElement).toHaveText('child3');
-             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 4}));
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 4}));
 
              location.goTo(2);
              advance(fixture);
              expect(location.path()).toEqual('/third');
              expect(fixture.nativeElement).toHaveText('child3');
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 4}));
 
-             TestBed.inject(MyGuard).allow = true;
+             TestBed.inject(MyCanDeactivateGuard).allow = true;
+
+             TestBed.inject(MyCanActivateGuard).allow = false;
+             location.goTo(2);
+             advance(fixture);
+             expect(location.path()).toEqual('/third');
+             expect(fixture.nativeElement).toHaveText('child3');
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 4}));
+
+             TestBed.inject(MyResolve).myresolve = EMPTY;
+             location.forward();
+             advance(fixture);
+             expect(location.path()).toEqual('/third');
+             expect(fixture.nativeElement).toHaveText('child3');
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 4}));
+
+             TestBed.inject(MyResolve).myresolve = of(2);
              location.forward();
              advance(fixture);
              expect(location.path()).toEqual('/fourth');
              expect(fixture.nativeElement).toHaveText('child4');
-             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 5}));
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 5}));
 
+             location.forward();
+             advance(fixture);
+             expect(location.path()).toEqual('/fourth');
+             expect(fixture.nativeElement).toHaveText('child4');
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 5}));
 
-             location.back();
-             location.goTo(2);
+             TestBed.inject(MyCanActivateGuard).allow = true;
+             location.forward();
              advance(fixture);
              expect(location.path()).toEqual('/fifth');
              expect(fixture.nativeElement).toHaveText('child5');
-             expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 6}));
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 6}));
            }));
 
         it('when navigate forward imperatively', fakeAsync(() => {
@@ -2897,17 +3203,19 @@ describe('Integration', () => {
              const location = TestBed.get(Location);
              expect(location.path()).toEqual('/third');
 
-             TestBed.get(MyGuard).allow = false;
+             TestBed.inject(MyCanDeactivateGuard).allow = false;
              router.navigateByUrl('/fourth');
              advance(fixture);
              expect(location.path()).toEqual('/third');
              expect(fixture.nativeElement).toHaveText('child3');
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 4}));
 
-             TestBed.get(MyGuard).allow = true;
+             TestBed.inject(MyCanDeactivateGuard).allow = true;
              location.forward();
              advance(fixture);
              expect(location.path()).toEqual('/fourth');
              expect(fixture.nativeElement).toHaveText('child4');
+             expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 5}));
            }));
       });
 
@@ -4003,7 +4311,6 @@ describe('Integration', () => {
                advance(fixture);
 
                expect(location.path()).toEqual('/');
-               expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 1}));
 
                expectEvents(recordedEvents, [
                  [NavigationStart, '/lazyFalse/loaded'],
@@ -4018,7 +4325,6 @@ describe('Integration', () => {
                advance(fixture);
 
                expect(location.path()).toEqual('/lazyTrue/loaded');
-               expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 2}));
 
                expectEvents(recordedEvents, [
                  [NavigationStart, '/lazyTrue/loaded'],
@@ -4058,7 +4364,6 @@ describe('Integration', () => {
            advance(fixture);
 
            expect(location.path()).toEqual('/blank');
-           expect(location.getState()).toEqual(jasmine.objectContaining({currentPageId: 1}));
 
            expectEvents(recordedEvents, [
              [NavigationStart, '/lazyFalse/loaded'],
