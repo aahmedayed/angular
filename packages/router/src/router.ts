@@ -714,7 +714,7 @@ export class Router {
 
                      filter(t => {
                        if (!t.guardsResult) {
-                         this.cancelNavigationTransition(t);
+                         this.cancelNavigationTransition(t, '');
                          return false;
                        }
                        return true;
@@ -1375,7 +1375,7 @@ export class Router {
         {navigationId: this.lastSuccessfulId, ngRouterPageId: this.currentPageId});
   }
 
-  private cancelNavigationTransition(t: NavigationTransition, reason = '') {
+  private cancelNavigationTransition(t: NavigationTransition, reason: string) {
     if (t.source === 'imperative') {
       this.resetUrlToCurrentUrlTree();
     } else {
