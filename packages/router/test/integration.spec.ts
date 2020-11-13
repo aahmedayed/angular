@@ -923,13 +923,13 @@ describe('Integration', () => {
        location.back();
        advance(fixture);
        expect(location.path()).toEqual('/team/33/simple');
-       expect(event!.navigationTrigger).toEqual('hashchange');
+       expect(event!.navigationTrigger).toEqual('popstate');
        expect(event!.restoredState!.navigationId).toEqual(simpleNavStart.id);
 
        location.forward();
        advance(fixture);
        expect(location.path()).toEqual('/team/22/user/victor');
-       expect(event!.navigationTrigger).toEqual('hashchange');
+       expect(event!.navigationTrigger).toEqual('popstate');
        expect(event!.restoredState!.navigationId).toEqual(userVictorNavStart.id);
      })));
 

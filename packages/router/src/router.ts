@@ -1307,9 +1307,9 @@ export class Router {
     //  if in the current navigation we skip the location change, we will need to get
     //  `ngRouterPageId` from the `restoredState` if it exist.
     let restoredState: RestoredState|null = null;
-    const navigationTriggeredByBrowserEvent = source !== 'imperative';
+    const isPopstateNavigation = source === 'popstate';
     const path = this.urlSerializer.serialize(rawUrl);
-    if (this.location.isCurrentPathEqualTo(path) || navigationTriggeredByBrowserEvent ||
+    if (this.location.isCurrentPathEqualTo(path) || isPopstateNavigation ||
         extras.skipLocationChange) {
       restoredState = this.location.getState() as RestoredState | null;
     }
@@ -1376,13 +1376,13 @@ export class Router {
   }
 
   private cancelNavigationTransition(t: NavigationTransition, reason: string) {
-    if (t.source === 'imperative') {
-      this.resetUrlToCurrentUrlTree();
-    } else {
+    if (t.source === 'popstate') {
       // The navigator change the location before triggered the browser event,
       // so we need to go back to the current url if the navigation is canceled.
       const targetPagePosition = this.currentPageId! - t.targetPageId;
       this.location.goTo(targetPagePosition);
+    } else {
+      this.resetUrlToCurrentUrlTree();
     }
     const navCancel = new NavigationCancel(t.id, this.serializeUrl(t.extractedUrl), reason);
     this.triggerEvent(navCancel);

@@ -91,7 +91,7 @@ export class SpyLocation implements Location {
 
     const url = path + (query.length > 0 ? ('?' + query) : '');
     this.urlChanges.push(url);
-    this._subject.emit({'url': url, 'pop': false});
+    this._subject.emit({'url': url, 'pop': false, 'type': 'imperative'});
   }
 
   replaceState(path: string, query: string = '', state: any = null) {
@@ -113,14 +113,16 @@ export class SpyLocation implements Location {
   forward() {
     if (this._historyIndex < (this._history.length - 1)) {
       this._historyIndex++;
-      this._subject.emit({'url': this.path(), 'state': this.getState(), 'pop': true});
+      this._subject.emit(
+          {'url': this.path(), 'state': this.getState(), 'pop': true, 'type': 'popstate'});
     }
   }
 
   back() {
     if (this._historyIndex > 0) {
       this._historyIndex--;
-      this._subject.emit({'url': this.path(), 'state': this.getState(), 'pop': true});
+      this._subject.emit(
+          {'url': this.path(), 'state': this.getState(), 'pop': true, 'type': 'popstate'});
     }
   }
 
