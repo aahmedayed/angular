@@ -2470,8 +2470,10 @@ describe('Integration', () => {
            {path: 'team/:id', component: TeamCmp}
          ]);
 
-         location.go('initial');
-         location.go('old/team/22');
+         router.navigateByUrl('initial');
+         advance(fixture);
+         router.navigateByUrl('old/team/22');
+         advance(fixture);
 
          // initial navigation
          router.initialNavigation();
@@ -2483,7 +2485,7 @@ describe('Integration', () => {
          expect(location.path()).toEqual('/initial');
 
          // location change
-         (<any>location).go('/old/team/33');
+         router.navigateByUrl('/old/team/33');
 
 
          advance(fixture);
@@ -2932,7 +2934,7 @@ describe('Integration', () => {
              expect(location.path()).toEqual('/one');
              expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
 
-             location.go('/two');
+             router.navigateByUrl('/two');
              advance(fixture);
              expect(location.path()).toEqual('/one');
              expect(location.getState()).toEqual(jasmine.objectContaining({ngRouterPageId: 2}));
@@ -5704,14 +5706,14 @@ describe('Integration', () => {
            events.splice(0);
 
            // another unsupported URL
-           location.go('/exclude/two');
+           router.navigateByUrl('/exclude/two');
            advance(fixture);
 
-           expect(location.path()).toEqual('/exclude/two');
+           expect(location.path()).toEqual('/exclude/one');
            expectEvents(events, []);
 
            // back to a supported URL
-           location.go('/include/simple');
+           router.navigateByUrl('/include/simple');
            advance(fixture);
 
            expect(location.path()).toEqual('/include/simple');
@@ -5739,10 +5741,10 @@ describe('Integration', () => {
            const events: any[] = [];
            router.events.subscribe(e => e instanceof RouterEvent && events.push(e));
 
-           location.go('/include/user/kate(aux:excluded)');
+           router.navigateByUrl('/include/user/kate(aux:excluded)');
            advance(fixture);
 
-           expect(location.path()).toEqual('/include/user/kate(aux:excluded)');
+           expect(location.path()).toEqual('/include/user/kate');
            expectEvents(events, [
              [NavigationStart, '/include/user/kate'], [RoutesRecognized, '/include/user/kate'],
              [GuardsCheckStart, '/include/user/kate'], [GuardsCheckEnd, '/include/user/kate'],
@@ -5758,7 +5760,7 @@ describe('Integration', () => {
            router.navigateByUrl('/include/simple');
            advance(fixture);
 
-           expect(location.path()).toEqual('/include/simple(aux:excluded2)');
+           expect(location.path()).toEqual('/include/simple');
            expectEvents(events, [
              [NavigationStart, '/include/simple'], [RoutesRecognized, '/include/simple'],
              [GuardsCheckStart, '/include/simple'], [GuardsCheckEnd, '/include/simple'],
