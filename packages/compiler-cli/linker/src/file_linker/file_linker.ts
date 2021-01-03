@@ -5,6 +5,7 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
+import {R3PartialDeclaration} from '@angular/compiler';
 import {AstObject} from '../ast/ast_value';
 import {DeclarationScope} from './declaration_scope';
 import {EmitScope} from './emit_scopes/emit_scope';
@@ -40,7 +41,8 @@ export class FileLinker<TConstantScope, TStatement, TExpression> {
    *
    * @param declarationFn the name of the function used to declare the partial declaration - e.g.
    *     `ɵɵngDeclareDirective`.
-   * @param args the arguments passed to the declaration function.
+   * @param args the arguments passed to the declaration function, should be a single object that
+   *     corresponds to the `R3DeclareDirectiveMetadata` or `R3DeclareComponentMetadata` interfaces.
    * @param declarationScope the scope that contains this call to the declaration function.
    */
   linkPartialDeclaration(
@@ -52,11 +54,12 @@ export class FileLinker<TConstantScope, TStatement, TExpression> {
               args.length}.`);
     }
 
-    const metaObj = AstObject.parse(args[0], this.linkerEnvironment.host);
+    const metaObj =
+        AstObject.parse<R3PartialDeclaration, TExpression>(args[0], this.linkerEnvironment.host);
     const ngImport = metaObj.getNode('ngImport');
     const emitScope = this.getEmitScope(ngImport, declarationScope);
 
-    const version = metaObj.getNumber('version');
+    const version = metaObj.getString('version');
     const linker = this.linkerSelector.getLinker(declarationFn, version);
     const definition =
         linker.linkPartialDeclaration(this.sourceUrl, this.code, emitScope.constantPool, metaObj);

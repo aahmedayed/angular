@@ -358,7 +358,7 @@ export declare class AnimationEvent {
 
           @Component({
             selector: 'test',
-            template: '<div dir [foo]="invalid && 1"></div>',
+            template: '<div dir [foo]="!!invalid"></div>',
           })
           class TestCmp {}
 
@@ -379,7 +379,7 @@ export declare class AnimationEvent {
 
         const diags = env.driveDiagnostics();
         expect(diags.length).toBe(2);
-        expect(diags[0].messageText).toEqual(`Type 'number' is not assignable to type 'string'.`);
+        expect(diags[0].messageText).toEqual(`Type 'boolean' is not assignable to type 'string'.`);
         expect(diags[1].messageText)
             .toEqual(`Property 'invalid' does not exist on type 'TestCmp'.`);
       });
@@ -389,7 +389,7 @@ export declare class AnimationEvent {
 
         const diags = env.driveDiagnostics();
         expect(diags.length).toBe(2);
-        expect(diags[0].messageText).toEqual(`Type 'number' is not assignable to type 'string'.`);
+        expect(diags[0].messageText).toEqual(`Type 'boolean' is not assignable to type 'string'.`);
         expect(diags[1].messageText)
             .toEqual(`Property 'invalid' does not exist on type 'TestCmp'.`);
       });
@@ -411,15 +411,15 @@ export declare class AnimationEvent {
 
           @Component({
             selector: 'test',
-            template: '<div dir [foo]="invalid && nullable"></div>',
+            template: '<div dir [foo]="!!invalid && nullable"></div>',
           })
           class TestCmp {
-            nullable: string | null | undefined;
+            nullable: boolean | null | undefined;
           }
 
           @Directive({selector: '[dir]'})
           class TestDir {
-            @Input() foo: string;
+            @Input() foo: boolean;
           }
 
           @NgModule({
@@ -436,7 +436,7 @@ export declare class AnimationEvent {
         const diags = env.driveDiagnostics();
         expect(diags.length).toBe(2);
         expect((diags[0].messageText as ts.DiagnosticMessageChain).messageText)
-            .toEqual(`Type 'string | null | undefined' is not assignable to type 'string'.`);
+            .toEqual(`Type 'boolean | null | undefined' is not assignable to type 'boolean'.`);
         expect(diags[1].messageText)
             .toEqual(`Property 'invalid' does not exist on type 'TestCmp'.`);
       });
@@ -448,7 +448,7 @@ export declare class AnimationEvent {
            const diags = env.driveDiagnostics();
            expect(diags.length).toBe(2);
            expect((diags[0].messageText as ts.DiagnosticMessageChain).messageText)
-               .toEqual(`Type 'string | null | undefined' is not assignable to type 'string'.`);
+               .toEqual(`Type 'boolean | null | undefined' is not assignable to type 'boolean'.`);
            expect(diags[1].messageText)
                .toEqual(`Property 'invalid' does not exist on type 'TestCmp'.`);
          });
@@ -470,15 +470,15 @@ export declare class AnimationEvent {
 
           @Component({
             selector: 'test',
-            template: '<div dir [foo]="invalid && user?.name"></div>',
+            template: '<div dir [foo]="!!invalid && user?.isMember"></div>',
           })
           class TestCmp {
-            user?: {name: string};
+            user?: {isMember: boolean};
           }
 
           @Directive({selector: '[dir]'})
           class TestDir {
-            @Input() foo: string;
+            @Input() foo: boolean;
           }
 
           @NgModule({
@@ -499,7 +499,7 @@ export declare class AnimationEvent {
         const diags = env.driveDiagnostics();
         expect(diags.length).toBe(2);
         expect((diags[0].messageText as ts.DiagnosticMessageChain).messageText)
-            .toEqual(`Type 'string | undefined' is not assignable to type 'string'.`);
+            .toEqual(`Type 'boolean | undefined' is not assignable to type 'boolean'.`);
         expect(diags[1].messageText)
             .toEqual(`Property 'invalid' does not exist on type 'TestCmp'.`);
       });
@@ -511,7 +511,7 @@ export declare class AnimationEvent {
            const diags = env.driveDiagnostics();
            expect(diags.length).toBe(2);
            expect((diags[0].messageText as ts.DiagnosticMessageChain).messageText)
-               .toEqual(`Type 'string | undefined' is not assignable to type 'string'.`);
+               .toEqual(`Type 'boolean | undefined' is not assignable to type 'boolean'.`);
            expect(diags[1].messageText)
                .toEqual(`Property 'invalid' does not exist on type 'TestCmp'.`);
          });
@@ -1128,7 +1128,7 @@ export declare class AnimationEvent {
 
     it('should report an error with an unknown pipe even if `fullTemplateTypeCheck` is disabled',
        () => {
-         env.tsconfig({ivyTemplateTypeCheck: true, fullTemplateTypeCheck: false});
+         env.tsconfig({fullTemplateTypeCheck: false});
          env.write('test.ts', `
           import {Component, NgModule} from '@angular/core';
 
@@ -1896,7 +1896,7 @@ export declare class AnimationEvent {
 
     describe('legacy schema checking with the DOM schema', () => {
       beforeEach(() => {
-        env.tsconfig({ivyTemplateTypeCheck: true, fullTemplateTypeCheck: false});
+        env.tsconfig({fullTemplateTypeCheck: false});
       });
 
       it('should check for unknown elements', () => {
@@ -2325,7 +2325,8 @@ export declare class AnimationEvent {
         env.write('other.ts', `export const VERSION = 2;`);
         env.driveMain();
 
-        expectCompleteReuse(firstProgram);
+        expectCompleteReuse(env.getTsProgram());
+        expectCompleteReuse(env.getReuseTsProgram());
       });
     });
   });

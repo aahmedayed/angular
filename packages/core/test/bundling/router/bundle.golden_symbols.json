@@ -1122,7 +1122,13 @@
     "name": "defaultIterableDiffers"
   },
   {
+    "name": "defaultIterableDiffersFactory"
+  },
+  {
     "name": "defaultKeyValueDiffers"
+  },
+  {
+    "name": "defaultKeyValueDiffersFactory"
   },
   {
     "name": "defaultMalformedUriErrorHandler"
@@ -1329,9 +1335,6 @@
     "name": "getInjectorIndex"
   },
   {
-    "name": "getLCleanup"
-  },
-  {
     "name": "getLView"
   },
   {
@@ -1362,6 +1365,9 @@
     "name": "getOrCreateInjectable"
   },
   {
+    "name": "getOrCreateLViewCleanup"
+  },
+  {
     "name": "getOrCreateNodeInjectorForNode"
   },
   {
@@ -1369,6 +1375,9 @@
   },
   {
     "name": "getOrCreateTNode"
+  },
+  {
+    "name": "getOrCreateTViewCleanup"
   },
   {
     "name": "getOrCreateViewRefs"

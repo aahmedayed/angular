@@ -9,10 +9,11 @@ import * as core from '../../core';
 import {DEFAULT_INTERPOLATION_CONFIG} from '../../ml_parser/interpolation_config';
 import * as o from '../../output/output_ast';
 import {Identifiers as R3} from '../r3_identifiers';
-import {R3ComponentDef, R3ComponentMetadata} from '../view/api';
+import {R3ComponentDef, R3ComponentMetadata, R3UsedDirectiveMetadata} from '../view/api';
 import {createComponentType} from '../view/compiler';
 import {ParsedTemplate} from '../view/template';
 import {DefinitionMap} from '../view/util';
+import {R3DeclareComponentMetadata} from './api';
 
 import {createDirectiveDefinitionMap} from './directive';
 import {toOptionalLiteralArray} from './util';
@@ -34,9 +35,10 @@ export function compileDeclareComponentFromMetadata(
 /**
  * Gathers the declaration fields for a component into a `DefinitionMap`.
  */
-export function createComponentDefinitionMap(
-    meta: R3ComponentMetadata, template: ParsedTemplate): DefinitionMap {
-  const definitionMap = createDirectiveDefinitionMap(meta);
+export function createComponentDefinitionMap(meta: R3ComponentMetadata, template: ParsedTemplate):
+    DefinitionMap<R3DeclareComponentMetadata> {
+  const definitionMap: DefinitionMap<R3DeclareComponentMetadata> =
+      createDirectiveDefinitionMap(meta);
 
   const templateMap = compileTemplateDefinition(template);
 
@@ -76,7 +78,7 @@ export function createComponentDefinitionMap(
  * Compiles the provided template into its partial definition.
  */
 function compileTemplateDefinition(template: ParsedTemplate): o.LiteralMapExpr {
-  const templateMap = new DefinitionMap();
+  const templateMap = new DefinitionMap<R3DeclareComponentMetadata['template']>();
   const templateExpr =
       typeof template.template === 'string' ? o.literal(template.template) : template.template;
   templateMap.set('source', templateExpr);
@@ -89,12 +91,11 @@ function compileTemplateDefinition(template: ParsedTemplate): o.LiteralMapExpr {
  * individual directives. If the component does not use any directives, then null is returned.
  */
 function compileUsedDirectiveMetadata(meta: R3ComponentMetadata): o.LiteralArrayExpr|null {
-  const wrapType = meta.wrapDirectivesAndPipesInClosure ?
-      (expr: o.Expression) => o.fn([], [new o.ReturnStatement(expr)]) :
-      (expr: o.Expression) => expr;
+  const wrapType =
+      meta.wrapDirectivesAndPipesInClosure ? generateForwardRef : (expr: o.Expression) => expr;
 
   return toOptionalLiteralArray(meta.directives, directive => {
-    const dirMeta = new DefinitionMap();
+    const dirMeta = new DefinitionMap<R3UsedDirectiveMetadata>();
     dirMeta.set('type', wrapType(directive.type));
     dirMeta.set('selector', o.literal(directive.selector));
     dirMeta.set('inputs', toOptionalLiteralArray(directive.inputs, o.literal));
@@ -114,13 +115,16 @@ function compileUsedPipeMetadata(meta: R3ComponentMetadata): o.LiteralMapExpr|nu
     return null;
   }
 
-  const wrapType = meta.wrapDirectivesAndPipesInClosure ?
-      (expr: o.Expression) => o.fn([], [new o.ReturnStatement(expr)]) :
-      (expr: o.Expression) => expr;
+  const wrapType =
+      meta.wrapDirectivesAndPipesInClosure ? generateForwardRef : (expr: o.Expression) => expr;
 
   const entries = [];
   for (const [name, pipe] of meta.pipes) {
     entries.push({key: name, value: wrapType(pipe), quoted: true});
   }
   return o.literalMap(entries);
+}
+
+function generateForwardRef(expr: o.Expression): o.Expression {
+  return o.importExpr(R3.forwardRef).callFn([o.fn([], [new o.ReturnStatement(expr)])]);
 }

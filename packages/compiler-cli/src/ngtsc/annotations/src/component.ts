@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {compileComponentFromMetadata, compileDeclareComponentFromMetadata, ConstantPool, CssSelector, DEFAULT_INTERPOLATION_CONFIG, DomElementSchemaRegistry, Expression, ExternalExpr, Identifiers, InterpolationConfig, LexerRange, makeBindingParser, ParsedTemplate, ParseSourceFile, parseTemplate, R3ComponentDef, R3ComponentMetadata, R3FactoryTarget, R3TargetBinder, R3UsedDirectiveMetadata, SelectorMatcher, Statement, TmplAstNode, WrappedNodeExpr} from '@angular/compiler';
+import {compileComponentFromMetadata, compileDeclareComponentFromMetadata, ConstantPool, CssSelector, DEFAULT_INTERPOLATION_CONFIG, DomElementSchemaRegistry, Expression, ExternalExpr, Identifiers, InterpolationConfig, LexerRange, makeBindingParser, ParsedTemplate, ParseSourceFile, parseTemplate, R3ComponentDef, R3ComponentMetadata, R3FactoryTarget, R3TargetBinder, R3UsedDirectiveMetadata, SelectorMatcher, Statement, syntaxError, TmplAstNode, WrappedNodeExpr} from '@angular/compiler';
 import * as ts from 'typescript';
 
 import {CycleAnalyzer} from '../../cycles';
@@ -18,7 +18,7 @@ import {IndexingContext} from '../../indexer';
 import {ClassPropertyMapping, ComponentResources, DirectiveMeta, DirectiveTypeCheckMeta, extractDirectiveTypeCheckMeta, InjectableClassRegistry, MetadataReader, MetadataRegistry, Resource, ResourceRegistry} from '../../metadata';
 import {EnumValue, PartialEvaluator} from '../../partial_evaluator';
 import {ClassDeclaration, DeclarationNode, Decorator, ReflectionHost, reflectObjectLiteral} from '../../reflection';
-import {ComponentScopeReader, LocalModuleScopeRegistry} from '../../scope';
+import {ComponentScopeReader, LocalModuleScopeRegistry, TypeCheckScopeRegistry} from '../../scope';
 import {AnalysisOutput, CompileResult, DecoratorHandler, DetectResult, HandlerFlags, HandlerPrecedence, ResolveResult} from '../../transform';
 import {TemplateSourceMapping, TypeCheckContext} from '../../typecheck/api';
 import {getTemplateId, makeTemplateDiagnostic} from '../../typecheck/diagnostics';
@@ -30,7 +30,6 @@ import {createValueHasWrongTypeError, getDirectiveDiagnostics, getProviderDiagno
 import {extractDirectiveMetadata, parseFieldArrayValue} from './directive';
 import {compileNgFactoryDefField} from './factory';
 import {generateSetClassMetadataCall} from './metadata';
-import {TypeCheckScopes} from './typecheck_scopes';
 import {findAngularDecorator, isAngularCoreReference, isExpressionForwardReference, readBaseClass, resolveProvidersRequiringFactory, unwrapExpression, wrapFunctionExpressionsInParens} from './util';
 
 const EMPTY_MAP = new Map<string, Expression>();
@@ -72,6 +71,8 @@ export interface ComponentAnalysisData {
   viewProvidersRequiringFactory: Set<Reference<ClassDeclaration>>|null;
 
   resources: ComponentResources;
+
+  isPoisoned: boolean;
 }
 
 export type ComponentResolutionData = Pick<R3ComponentMetadata, ComponentMetadataResolvedFields>;
@@ -85,10 +86,11 @@ export class ComponentDecoratorHandler implements
       private reflector: ReflectionHost, private evaluator: PartialEvaluator,
       private metaRegistry: MetadataRegistry, private metaReader: MetadataReader,
       private scopeReader: ComponentScopeReader, private scopeRegistry: LocalModuleScopeRegistry,
+      private typeCheckScopeRegistry: TypeCheckScopeRegistry,
       private resourceRegistry: ResourceRegistry, private isCore: boolean,
       private resourceLoader: ResourceLoader, private rootDirs: ReadonlyArray<string>,
       private defaultPreserveWhitespaces: boolean, private i18nUseExternalIds: boolean,
-      private enableI18nLegacyMessageIdFormat: boolean,
+      private enableI18nLegacyMessageIdFormat: boolean, private usePoisonedData: boolean,
       private i18nNormalizeLineEndingsInICUs: boolean|undefined,
       private moduleResolver: ModuleResolver, private cycleAnalyzer: CycleAnalyzer,
       private refEmitter: ReferenceEmitter, private defaultImportRecorder: DefaultImportRecorder,
@@ -98,7 +100,6 @@ export class ComponentDecoratorHandler implements
 
   private literalCache = new Map<Decorator, ts.ObjectLiteralExpression>();
   private elementSchemaRegistry = new DomElementSchemaRegistry();
-  private typeCheckScopes = new TypeCheckScopes(this.scopeReader, this.metaReader);
 
   /**
    * During the asynchronous preanalyze phase, it's necessary to parse the template to extract
@@ -265,28 +266,6 @@ export class ComponentDecoratorHandler implements
         {path: null, expression: component.get('template')!} :
         {path: absoluteFrom(template.templateUrl), expression: template.sourceMapping.node};
 
-    let diagnostics: ts.Diagnostic[]|undefined = undefined;
-
-    if (template.errors !== null) {
-      // If there are any template parsing errors, convert them to `ts.Diagnostic`s for display.
-      const id = getTemplateId(node);
-      diagnostics = template.errors.map(error => {
-        const span = error.span;
-
-        if (span.start.offset === span.end.offset) {
-          // Template errors can contain zero-length spans, if the error occurs at a single point.
-          // However, TypeScript does not handle displaying a zero-length diagnostic very well, so
-          // increase the ending offset by 1 for such errors, to ensure the position is shown in the
-          // diagnostic.
-          span.end.offset++;
-        }
-
-        return makeTemplateDiagnostic(
-            id, template.sourceMapping, span, ts.DiagnosticCategory.Error,
-            ngErrorCode(ErrorCode.TEMPLATE_PARSE_ERROR), error.msg);
-      });
-    }
-
     // Figure out the set of styles. The ordering here is important: external resources (styleUrls)
     // precede inline styles, and styles defined in the template override styles defined in the
     // component.
@@ -369,8 +348,8 @@ export class ComponentDecoratorHandler implements
           styles: styleResources,
           template: templateResource,
         },
+        isPoisoned: false,
       },
-      diagnostics,
     };
     if (changeDetection !== null) {
       output.analysis!.meta.changeDetection = changeDetection;
@@ -393,6 +372,8 @@ export class ComponentDecoratorHandler implements
       isComponent: true,
       baseClass: analysis.baseClass,
       ...analysis.typeCheckMeta,
+      isPoisoned: analysis.isPoisoned,
+      isStructural: false,
     });
 
     this.resourceRegistry.registerResources(analysis.resources, node);
@@ -401,15 +382,19 @@ export class ComponentDecoratorHandler implements
 
   index(
       context: IndexingContext, node: ClassDeclaration, analysis: Readonly<ComponentAnalysisData>) {
+    if (analysis.isPoisoned && !this.usePoisonedData) {
+      return null;
+    }
     const scope = this.scopeReader.getScopeForComponent(node);
     const selector = analysis.meta.selector;
     const matcher = new SelectorMatcher<DirectiveMeta>();
-    if (scope === 'error') {
-      // Don't bother indexing components which had erroneous scopes.
-      return null;
-    }
-
     if (scope !== null) {
+      if ((scope.compilation.isPoisoned || scope.exported.isPoisoned) && !this.usePoisonedData) {
+        // Don't bother indexing components which had erroneous scopes, unless specifically
+        // requested.
+        return null;
+      }
+
       for (const directive of scope.compilation.directives) {
         if (directive.selector !== null) {
           matcher.addSelectables(CssSelector.parse(directive.selector), directive);
@@ -432,24 +417,31 @@ export class ComponentDecoratorHandler implements
 
   typeCheck(ctx: TypeCheckContext, node: ClassDeclaration, meta: Readonly<ComponentAnalysisData>):
       void {
-    if (!ts.isClassDeclaration(node)) {
+    if (this.typeCheckScopeRegistry === null || !ts.isClassDeclaration(node)) {
       return;
     }
 
-    const scope = this.typeCheckScopes.getTypeCheckScope(node);
-    if (scope === 'error') {
-      // Don't type-check components that had errors in their scopes.
+    if (meta.isPoisoned && !this.usePoisonedData) {
+      return;
+    }
+    const scope = this.typeCheckScopeRegistry.getTypeCheckScope(node);
+    if (scope.isPoisoned && !this.usePoisonedData) {
+      // Don't type-check components that had errors in their scopes, unless requested.
       return;
     }
 
     const binder = new R3TargetBinder(scope.matcher);
     ctx.addTemplate(
         new Reference(node), binder, meta.template.diagNodes, scope.pipes, scope.schemas,
-        meta.template.sourceMapping, meta.template.file);
+        meta.template.sourceMapping, meta.template.file, meta.template.errors);
   }
 
   resolve(node: ClassDeclaration, analysis: Readonly<ComponentAnalysisData>):
       ResolveResult<ComponentResolutionData> {
+    if (analysis.isPoisoned && !this.usePoisonedData) {
+      return {};
+    }
+
     const context = node.getSourceFile();
     // Check whether this component was registered with an NgModule. If so, it should be compiled
     // under that module's compilation scope.
@@ -462,7 +454,7 @@ export class ComponentDecoratorHandler implements
       wrapDirectivesAndPipesInClosure: false,
     };
 
-    if (scope !== null && scope !== 'error') {
+    if (scope !== null && (!scope.compilation.isPoisoned || this.usePoisonedData)) {
       // Replace the empty components and directives from the analyze() step with a fully expanded
       // scope. This is possible now because during resolve() the whole compilation unit has been
       // fully analyzed.
@@ -476,17 +468,17 @@ export class ComponentDecoratorHandler implements
       // Determining this is challenging, because the TemplateDefinitionBuilder is responsible for
       // matching directives and pipes in the template; however, that doesn't run until the actual
       // compile() step. It's not possible to run template compilation sooner as it requires the
-      // ConstantPool for the overall file being compiled (which isn't available until the transform
-      // step).
+      // ConstantPool for the overall file being compiled (which isn't available until the
+      // transform step).
       //
-      // Instead, directives/pipes are matched independently here, using the R3TargetBinder. This is
-      // an alternative implementation of template matching which is used for template type-checking
-      // and will eventually replace matching in the TemplateDefinitionBuilder.
+      // Instead, directives/pipes are matched independently here, using the R3TargetBinder. This
+      // is an alternative implementation of template matching which is used for template
+      // type-checking and will eventually replace matching in the TemplateDefinitionBuilder.
 
 
-      // Set up the R3TargetBinder, as well as a 'directives' array and a 'pipes' map that are later
-      // fed to the TemplateDefinitionBuilder. First, a SelectorMatcher is constructed to match
-      // directives that are in scope.
+      // Set up the R3TargetBinder, as well as a 'directives' array and a 'pipes' map that are
+      // later fed to the TemplateDefinitionBuilder. First, a SelectorMatcher is constructed to
+      // match directives that are in scope.
       type MatchedDirective = DirectiveMeta&{selector: string};
       const matcher = new SelectorMatcher<MatchedDirective>();
 
@@ -547,8 +539,8 @@ export class ComponentDecoratorHandler implements
         }
 
         // Check whether the directive/pipe arrays in ɵcmp need to be wrapped in closures.
-        // This is required if any directive/pipe reference is to a declaration in the same file but
-        // declared after this component.
+        // This is required if any directive/pipe reference is to a declaration in the same file
+        // but declared after this component.
         const wrapDirectivesAndPipesInClosure =
             usedDirectives.some(
                 dir => isExpressionForwardReference(dir.type, node.name, context)) ||
@@ -601,6 +593,9 @@ export class ComponentDecoratorHandler implements
   compileFull(
       node: ClassDeclaration, analysis: Readonly<ComponentAnalysisData>,
       resolution: Readonly<ComponentResolutionData>, pool: ConstantPool): CompileResult[] {
+    if (analysis.template.errors !== null && analysis.template.errors.length > 0) {
+      return [];
+    }
     const meta: R3ComponentMetadata = {...analysis.meta, ...resolution};
     const def = compileComponentFromMetadata(meta, pool, makeBindingParser());
     return this.compileComponent(analysis, def);
@@ -609,6 +604,9 @@ export class ComponentDecoratorHandler implements
   compilePartial(
       node: ClassDeclaration, analysis: Readonly<ComponentAnalysisData>,
       resolution: Readonly<ComponentResolutionData>): CompileResult[] {
+    if (analysis.template.errors !== null && analysis.template.errors.length > 0) {
+      return [];
+    }
     const meta: R3ComponentMetadata = {...analysis.meta, ...resolution};
     const def = compileDeclareComponentFromMetadata(meta, analysis.template);
     return this.compileComponent(analysis, def);
@@ -874,8 +872,8 @@ export class ComponentDecoratorHandler implements
     // 2. By default, the template parser strips leading trivia characters (like spaces, tabs, and
     //    newlines). This also destroys source mapping information.
     //
-    // In order to guarantee the correctness of diagnostics, templates are parsed a second time with
-    // the above options set to preserve source mappings.
+    // In order to guarantee the correctness of diagnostics, templates are parsed a second time
+    // with the above options set to preserve source mappings.
 
     const {nodes: diagNodes} = parseTemplate(templateStr, templateUrl, {
       preserveWhitespaces: true,

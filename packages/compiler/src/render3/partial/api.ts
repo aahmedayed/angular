@@ -6,8 +6,21 @@
  * found in the LICENSE file at https://angular.io/license
  */
 import {ChangeDetectionStrategy, ViewEncapsulation} from '../../core';
-import {InterpolationConfig} from '../../ml_parser/interpolation_config';
 import * as o from '../../output/output_ast';
+
+export interface R3PartialDeclaration {
+  /**
+   * Version number of the Angular compiler that was used to compile this declaration. The linker
+   * will be able to detect which version a library is using and interpret its metadata accordingly.
+   */
+  version: string;
+
+  /**
+   * A reference to the `@angular/core` ES module, which allows access
+   * to all Angular exports, including Ivy instructions.
+   */
+  ngImport: o.Expression;
+}
 
 /**
  * This interface describes the shape of the object that partial directive declarations are compiled
@@ -15,14 +28,7 @@ import * as o from '../../output/output_ast';
  * the generation of the partial declaration, nor when the linker applies full compilation from the
  * partial declaration.
  */
-export interface R3DeclareDirectiveMetadata {
-  /**
-   * Version number of the metadata format. This is used to evolve the metadata
-   * interface later - the linker will be able to detect which version a library
-   * is using and interpret its metadata accordingly.
-   */
-  version: 1;
-
+export interface R3DeclareDirectiveMetadata extends R3PartialDeclaration {
   /**
    * Unparsed selector of the directive.
    */
@@ -40,8 +46,7 @@ export interface R3DeclareDirectiveMetadata {
   inputs?: {[classPropertyName: string]: string|[string, string]};
 
   /**
-   * A mapping of outputs from class property names to binding property names, or to a tuple of
-   * binding property name and class property name if the names are different.
+   * A mapping of outputs from class property names to binding property names.
    */
   outputs?: {[classPropertyName: string]: string};
 
@@ -106,12 +111,6 @@ export interface R3DeclareDirectiveMetadata {
    * Whether the directive implements the `ngOnChanges` hook. Defaults to false.
    */
   usesOnChanges?: boolean;
-
-  /**
-   * A reference to the `@angular/core` ES module, which allows access
-   * to all Angular exports, including Ivy instructions.
-   */
-  ngImport: o.Expression;
 }
 
 /**
@@ -155,7 +154,8 @@ export interface R3DeclareComponentMetadata extends R3DeclareDirectiveMetadata {
     selector: string;
 
     /**
-     * Reference to the directive class (possibly a forward reference).
+     * Reference to the directive class (possibly a forward reference wrapped in a `forwardRef`
+     * invocation).
      */
     type: o.Expression | (() => o.Expression);
 
@@ -176,8 +176,8 @@ export interface R3DeclareComponentMetadata extends R3DeclareDirectiveMetadata {
   }[];
 
   /**
-   * A map of pipe names to an expression referencing the pipe type (possibly a forward reference)
-   * which are used in the template.
+   * A map of pipe names to an expression referencing the pipe type (possibly a forward reference
+   * wrapped in a `forwardRef` invocation) which are used in the template.
    */
   pipes?: {[pipeName: string]: o.Expression|(() => o.Expression)};
 
@@ -206,7 +206,7 @@ export interface R3DeclareComponentMetadata extends R3DeclareDirectiveMetadata {
   /**
    * Overrides the default interpolation start and end delimiters. Defaults to {{ and }}.
    */
-  interpolation?: InterpolationConfig;
+  interpolation?: [string, string];
 
   /**
    * Whether whitespace in the template should be preserved. Defaults to false.

@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {compileDeclareDirectiveFromMetadata, compileDirectiveFromMetadata, ConstantPool, Expression, Identifiers, makeBindingParser, ParsedHostBindings, ParseError, parseHostBindings, R3DependencyMetadata, R3DirectiveDef, R3DirectiveMetadata, R3FactoryTarget, R3QueryMetadata, Statement, verifyHostBindings, WrappedNodeExpr} from '@angular/compiler';
+import {compileDeclareDirectiveFromMetadata, compileDirectiveFromMetadata, ConstantPool, Expression, ExternalExpr, Identifiers, makeBindingParser, ParsedHostBindings, ParseError, parseHostBindings, R3DependencyMetadata, R3DirectiveDef, R3DirectiveMetadata, R3FactoryTarget, R3QueryMetadata, R3ResolvedDependencyType, Statement, verifyHostBindings, WrappedNodeExpr} from '@angular/compiler';
 import * as ts from 'typescript';
 
 import {ErrorCode, FatalDiagnosticError} from '../../diagnostics';
@@ -41,6 +41,8 @@ export interface DirectiveHandlerData {
   providersRequiringFactory: Set<Reference<ClassDeclaration>>|null;
   inputs: ClassPropertyMapping;
   outputs: ClassPropertyMapping;
+  isPoisoned: boolean;
+  isStructural: boolean;
 }
 
 export class DirectiveDecoratorHandler implements
@@ -106,7 +108,9 @@ export class DirectiveDecoratorHandler implements
             this.annotateForClosureCompiler),
         baseClass: readBaseClass(node, this.reflector, this.evaluator),
         typeCheckMeta: extractDirectiveTypeCheckMeta(node, directiveResult.inputs, this.reflector),
-        providersRequiringFactory
+        providersRequiringFactory,
+        isPoisoned: false,
+        isStructural: directiveResult.isStructural,
       }
     };
   }
@@ -126,6 +130,8 @@ export class DirectiveDecoratorHandler implements
       isComponent: false,
       baseClass: analysis.baseClass,
       ...analysis.typeCheckMeta,
+      isPoisoned: analysis.isPoisoned,
+      isStructural: analysis.isStructural,
     });
 
     this.injectableRegistry.registerInjectable(node);
@@ -223,6 +229,7 @@ export function extractDirectiveMetadata(
   metadata: R3DirectiveMetadata,
   inputs: ClassPropertyMapping,
   outputs: ClassPropertyMapping,
+  isStructural: boolean;
 }|undefined {
   let directive: Map<string, ts.Expression>;
   if (decorator === null || decorator.args === null || decorator.args.length === 0) {
@@ -349,6 +356,17 @@ export function extractDirectiveMetadata(
     ctorDeps = unwrapConstructorDependencies(rawCtorDeps);
   }
 
+  const isStructural = ctorDeps !== null && ctorDeps !== 'invalid' && ctorDeps.some(dep => {
+    if (dep.resolved !== R3ResolvedDependencyType.Token || !(dep.token instanceof ExternalExpr)) {
+      return false;
+    }
+    if (dep.token.value.moduleName !== '@angular/core' || dep.token.value.name !== 'TemplateRef') {
+      return false;
+    }
+
+    return true;
+  });
+
   // Detect if the component inherits from another class
   const usesInheritance = reflector.hasBaseClass(clazz);
   const type = wrapTypeReference(reflector, clazz);
@@ -383,6 +401,7 @@ export function extractDirectiveMetadata(
     metadata,
     inputs,
     outputs,
+    isStructural,
   };
 }
 

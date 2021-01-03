@@ -244,10 +244,10 @@ export class Parser {
 
         atInterpolation = true;
       } else {
-        // parse from starting {{ to ending }}
+        // parse from starting {{ to ending }} while ignoring content inside quotes.
         const fullStart = i;
         const exprStart = fullStart + interpStart.length;
-        const exprEnd = input.indexOf(interpEnd, exprStart);
+        const exprEnd = this._getExpressiondEndIndex(input, interpEnd, exprStart);
         if (exprEnd === -1) {
           // Could not find the end of the interpolation; do not parse an expression.
           // Instead we should extend the content on the last raw string.
@@ -340,10 +340,39 @@ export class Parser {
 
     return errLocation.length;
   }
+
+  /**
+   * Finds the index of the end of an interpolation expression
+   * while ignoring comments and quoted content.
+   */
+  private _getExpressiondEndIndex(input: string, expressionEnd: string, start: number): number {
+    let currentQuote: string|null = null;
+    let escapeCount = 0;
+    for (let i = start; i < input.length; i++) {
+      const char = input[i];
+      // Skip the characters inside quotes. Note that we only care about the
+      // outer-most quotes matching up and we need to account for escape characters.
+      if (isQuote(input.charCodeAt(i)) && (currentQuote === null || currentQuote === char) &&
+          escapeCount % 2 === 0) {
+        currentQuote = currentQuote === null ? char : null;
+      } else if (currentQuote === null) {
+        if (input.startsWith(expressionEnd, i)) {
+          return i;
+        }
+        // Nothing else in the expression matters after we've
+        // hit a comment so look directly for the end token.
+        if (input.startsWith('//', i)) {
+          return input.indexOf(expressionEnd, i);
+        }
+      }
+      escapeCount = char === '\\' ? escapeCount + 1 : 0;
+    }
+    return -1;
+  }
 }
 
 export class IvyParser extends Parser {
-  simpleExpressionChecker = IvySimpleExpressionChecker;  //
+  simpleExpressionChecker = IvySimpleExpressionChecker;
 }
 
 /** Describes a stateful context an expression parser is in. */
@@ -820,11 +849,14 @@ export class _ParseAST {
 
   parseExpressionList(terminator: number): AST[] {
     const result: AST[] = [];
-    if (!this.next.isCharacter(terminator)) {
-      do {
+
+    do {
+      if (!this.next.isCharacter(terminator)) {
         result.push(this.parsePipe());
-      } while (this.consumeOptionalCharacter(chars.$COMMA));
-    }
+      } else {
+        break;
+      }
+    } while (this.consumeOptionalCharacter(chars.$COMMA));
     return result;
   }
 
@@ -974,7 +1006,8 @@ export class _ParseAST {
         } else {
           // Otherwise the key must be a directive keyword, like "of". Transform
           // the key to actual key. Eg. of -> ngForOf, trackBy -> ngForTrackBy
-          key.source = templateKey.source + key.source[0].toUpperCase() + key.source.substring(1);
+          key.source =
+              templateKey.source + key.source.charAt(0).toUpperCase() + key.source.substring(1);
           bindings.push(...this.parseDirectiveKeywordBindings(key));
         }
       }

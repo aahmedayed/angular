@@ -13,9 +13,9 @@ import {absoluteFrom, AbsoluteFsPath, getSourceFileOrError, LogicalFileSystem} f
 import {TestFile} from '../../file_system/testing';
 import {AbsoluteModuleStrategy, LocalIdentifierStrategy, LogicalProjectStrategy, ModuleResolver, Reexport, Reference, ReferenceEmitter} from '../../imports';
 import {NOOP_INCREMENTAL_BUILD} from '../../incremental';
-import {ClassPropertyMapping} from '../../metadata';
+import {ClassPropertyMapping, CompoundMetadataReader} from '../../metadata';
 import {ClassDeclaration, isNamedClassDeclaration, TypeScriptReflectionHost} from '../../reflection';
-import {ComponentScopeReader, LocalModuleScope, ScopeData} from '../../scope';
+import {ComponentScopeReader, LocalModuleScope, ScopeData, TypeCheckScopeRegistry} from '../../scope';
 import {makeProgram} from '../../testing';
 import {getRootDirs} from '../../util/src/typescript';
 import {ProgramTypeCheckAdapter, TemplateTypeChecker, TypeCheckContext} from '../api';
@@ -407,7 +407,7 @@ export function setup(targets: TypeCheckingTarget[], overrides: {
           node: classRef.node.name,
         };
 
-        ctx.addTemplate(classRef, binder, nodes, pipes, [], sourceMapping, templateFile);
+        ctx.addTemplate(classRef, binder, nodes, pipes, [], sourceMapping, templateFile, errors);
       }
     }
   });
@@ -435,6 +435,7 @@ export function setup(targets: TypeCheckingTarget[], overrides: {
                 directives: [],
                 ngModules: [],
                 pipes: [],
+                isPoisoned: false,
               };
               return {
                 ngModule,
@@ -460,9 +461,12 @@ export function setup(targets: TypeCheckingTarget[], overrides: {
         }
   };
 
+  const typeCheckScopeRegistry =
+      new TypeCheckScopeRegistry(fakeScopeReader, new CompoundMetadataReader([]));
+
   const templateTypeChecker = new TemplateTypeCheckerImpl(
       program, programStrategy, checkAdapter, fullConfig, emitter, reflectionHost, host,
-      NOOP_INCREMENTAL_BUILD, fakeScopeReader);
+      NOOP_INCREMENTAL_BUILD, fakeScopeReader, typeCheckScopeRegistry);
   return {
     templateTypeChecker,
     program,
@@ -501,6 +505,7 @@ function prepareDeclarations(
       isGeneric: decl.isGeneric ?? false,
       outputs: ClassPropertyMapping.fromMappedObject(decl.outputs || {}),
       queries: decl.queries || [],
+      isStructural: false,
     };
     matcher.addSelectables(selector, meta);
   }
@@ -532,6 +537,7 @@ function makeScope(program: ts.Program, sf: ts.SourceFile, decls: TestDeclaratio
     ngModules: [],
     directives: [],
     pipes: [],
+    isPoisoned: false,
   };
 
   for (const decl of decls) {
@@ -561,6 +567,8 @@ function makeScope(program: ts.Program, sf: ts.SourceFile, decls: TestDeclaratio
         stringLiteralInputFields: new Set(decl.stringLiteralInputFields ?? []),
         undeclaredInputFields: new Set(decl.undeclaredInputFields ?? []),
         isGeneric: decl.isGeneric ?? false,
+        isPoisoned: false,
+        isStructural: false,
       });
     } else if (decl.type === 'pipe') {
       scope.pipes.push({

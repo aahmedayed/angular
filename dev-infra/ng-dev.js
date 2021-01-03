@@ -2842,7 +2842,7 @@ function getBranchesFromTargetLabel(label, githubTargetBranch) {
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-function checkTargetBranchesForPr(prNumber, jsonOutput = false) {
+function getTargetBranchesForPr(prNumber) {
     return tslib.__awaiter(this, void 0, void 0, function* () {
         /** The ng-dev configuration. */
         const config = getConfig();
@@ -2869,10 +2869,13 @@ function checkTargetBranchesForPr(prNumber, jsonOutput = false) {
             return;
         }
         /** The target branches based on the target label and branch targetted in the Github UI. */
-        const targets = yield getBranchesFromTargetLabel(targetLabel, githubTargetBranch);
-        // When requested, print a json output to stdout, rather than using standard ng-dev logging.
-        if (jsonOutput) {
-            process.stdout.write(JSON.stringify(targets));
+        return yield getBranchesFromTargetLabel(targetLabel, githubTargetBranch);
+    });
+}
+function printTargetBranchesForPr(prNumber) {
+    return tslib.__awaiter(this, void 0, void 0, function* () {
+        const targets = yield getTargetBranchesForPr(prNumber);
+        if (targets === undefined) {
             return;
         }
         info.group(`PR #${prNumber} will merge into:`);
@@ -2890,22 +2893,16 @@ function checkTargetBranchesForPr(prNumber, jsonOutput = false) {
  */
 /** Builds the command. */
 function builder$5(yargs) {
-    return yargs
-        .positional('pr', {
+    return yargs.positional('pr', {
         description: 'The pull request number',
         type: 'number',
         demandOption: true,
-    })
-        .option('json', {
-        type: 'boolean',
-        default: false,
-        description: 'Print response as json',
     });
 }
 /** Handles the command. */
-function handler$5({ pr, json }) {
+function handler$5({ pr }) {
     return tslib.__awaiter(this, void 0, void 0, function* () {
-        yield checkTargetBranchesForPr(pr, json);
+        yield printTargetBranchesForPr(pr);
     });
 }
 /** yargs command module describing the command.  */
@@ -3900,35 +3897,52 @@ var AutosquashMergeStrategy = /** @class */ (function (_super) {
      */
     AutosquashMergeStrategy.prototype.merge = function (pullRequest) {
         return tslib.__awaiter(this, void 0, void 0, function () {
-            var prNumber, targetBranches, requiredBaseSha, needsCommitMessageFixup, baseSha, revisionRange, branchOrRevisionBeforeRebase, rebaseEnv, failedBranches;
+            var prNumber, targetBranches, requiredBaseSha, needsCommitMessageFixup, githubTargetBranch, baseSha, revisionRange, branchOrRevisionBeforeRebase, rebaseEnv, failedBranches, localBranch, sha;
             return tslib.__generator(this, function (_a) {
-                prNumber = pullRequest.prNumber, targetBranches = pullRequest.targetBranches, requiredBaseSha = pullRequest.requiredBaseSha, needsCommitMessageFixup = pullRequest.needsCommitMessageFixup;
-                // In case a required base is specified for this pull request, check if the pull
-                // request contains the given commit. If not, return a pull request failure. This
-                // check is useful for enforcing that PRs are rebased on top of a given commit. e.g.
-                // a commit that changes the codeowner ship validation. PRs which are not rebased
-                // could bypass new codeowner ship rules.
-                if (requiredBaseSha && !this.git.hasCommit(TEMP_PR_HEAD_BRANCH, requiredBaseSha)) {
-                    return [2 /*return*/, PullRequestFailure.unsatisfiedBaseSha()];
+                switch (_a.label) {
+                    case 0:
+                        prNumber = pullRequest.prNumber, targetBranches = pullRequest.targetBranches, requiredBaseSha = pullRequest.requiredBaseSha, needsCommitMessageFixup = pullRequest.needsCommitMessageFixup, githubTargetBranch = pullRequest.githubTargetBranch;
+                        // In case a required base is specified for this pull request, check if the pull
+                        // request contains the given commit. If not, return a pull request failure. This
+                        // check is useful for enforcing that PRs are rebased on top of a given commit. e.g.
+                        // a commit that changes the codeowner ship validation. PRs which are not rebased
+                        // could bypass new codeowner ship rules.
+                        if (requiredBaseSha && !this.git.hasCommit(TEMP_PR_HEAD_BRANCH, requiredBaseSha)) {
+                            return [2 /*return*/, PullRequestFailure.unsatisfiedBaseSha()];
+                        }
+                        baseSha = this.git.run(['rev-parse', this.getPullRequestBaseRevision(pullRequest)]).stdout.trim();
+                        revisionRange = baseSha + ".." + TEMP_PR_HEAD_BRANCH;
+                        branchOrRevisionBeforeRebase = this.git.getCurrentBranchOrRevision();
+                        rebaseEnv = needsCommitMessageFixup ? undefined : tslib.__assign(tslib.__assign({}, process.env), { GIT_SEQUENCE_EDITOR: 'true' });
+                        this.git.run(['rebase', '--interactive', '--autosquash', baseSha, TEMP_PR_HEAD_BRANCH], { stdio: 'inherit', env: rebaseEnv });
+                        // Update pull requests commits to reference the pull request. This matches what
+                        // Github does when pull requests are merged through the Web UI. The motivation is
+                        // that it should be easy to determine which pull request contained a given commit.
+                        // Note: The filter-branch command relies on the working tree, so we want to make sure
+                        // that we are on the initial branch or revision where the merge script has been invoked.
+                        this.git.run(['checkout', '-f', branchOrRevisionBeforeRebase]);
+                        this.git.run(['filter-branch', '-f', '--msg-filter', MSG_FILTER_SCRIPT + " " + prNumber, revisionRange]);
+                        failedBranches = this.cherryPickIntoTargetBranches(revisionRange, targetBranches);
+                        if (failedBranches.length) {
+                            return [2 /*return*/, PullRequestFailure.mergeConflicts(failedBranches)];
+                        }
+                        this.pushTargetBranchesUpstream(targetBranches);
+                        if (!(githubTargetBranch !== 'master')) return [3 /*break*/, 3];
+                        localBranch = this.getLocalTargetBranchName(githubTargetBranch);
+                        sha = this.git.run(['rev-parse', localBranch]).stdout.trim();
+                        // Create a comment saying the PR was closed by the SHA.
+                        return [4 /*yield*/, this.git.github.issues.createComment(tslib.__assign(tslib.__assign({}, this.git.remoteParams), { issue_number: pullRequest.prNumber, body: "Closed by commit " + sha }))];
+                    case 1:
+                        // Create a comment saying the PR was closed by the SHA.
+                        _a.sent();
+                        // Actually close the PR.
+                        return [4 /*yield*/, this.git.github.pulls.update(tslib.__assign(tslib.__assign({}, this.git.remoteParams), { pull_number: pullRequest.prNumber, state: 'closed' }))];
+                    case 2:
+                        // Actually close the PR.
+                        _a.sent();
+                        _a.label = 3;
+                    case 3: return [2 /*return*/, null];
                 }
-                baseSha = this.git.run(['rev-parse', this.getPullRequestBaseRevision(pullRequest)]).stdout.trim();
-                revisionRange = baseSha + ".." + TEMP_PR_HEAD_BRANCH;
-                branchOrRevisionBeforeRebase = this.git.getCurrentBranchOrRevision();
-                rebaseEnv = needsCommitMessageFixup ? undefined : tslib.__assign(tslib.__assign({}, process.env), { GIT_SEQUENCE_EDITOR: 'true' });
-                this.git.run(['rebase', '--interactive', '--autosquash', baseSha, TEMP_PR_HEAD_BRANCH], { stdio: 'inherit', env: rebaseEnv });
-                // Update pull requests commits to reference the pull request. This matches what
-                // Github does when pull requests are merged through the Web UI. The motivation is
-                // that it should be easy to determine which pull request contained a given commit.
-                // Note: The filter-branch command relies on the working tree, so we want to make sure
-                // that we are on the initial branch or revision where the merge script has been invoked.
-                this.git.run(['checkout', '-f', branchOrRevisionBeforeRebase]);
-                this.git.run(['filter-branch', '-f', '--msg-filter', MSG_FILTER_SCRIPT + " " + prNumber, revisionRange]);
-                failedBranches = this.cherryPickIntoTargetBranches(revisionRange, targetBranches);
-                if (failedBranches.length) {
-                    return [2 /*return*/, PullRequestFailure.mergeConflicts(failedBranches)];
-                }
-                this.pushTargetBranchesUpstream(targetBranches);
-                return [2 /*return*/, null];
             });
         });
     };
@@ -4194,7 +4208,7 @@ function mergePullRequest(prNumber, githubToken, projectRoot, config) {
                 case 0:
                     // Set the environment variable to skip all git commit hooks triggered by husky. We are unable to
                     // rely on `--no-verify` as some hooks still run, notably the `prepare-commit-msg` hook.
-                    process.env['HUSKY_SKIP_HOOKS'] = '1';
+                    process.env['HUSKY'] = '0';
                     return [4 /*yield*/, createPullRequestMergeTask(githubToken, projectRoot, config)];
                 case 1:
                     api = _a.sent();
@@ -6526,13 +6540,13 @@ const ReleaseSetDistTagCommand = {
  * Note: git operations, especially git status, take a long time inside mounted docker volumes
  * in Windows or OSX hosts (https://github.com/docker/for-win/issues/188).
  */
-function buildEnvStamp() {
+function buildEnvStamp(mode) {
     console.info(`BUILD_SCM_BRANCH ${getCurrentBranch()}`);
     console.info(`BUILD_SCM_COMMIT_SHA ${getCurrentSha()}`);
     console.info(`BUILD_SCM_HASH ${getCurrentSha()}`);
     console.info(`BUILD_SCM_LOCAL_CHANGES ${hasLocalChanges()}`);
     console.info(`BUILD_SCM_USER ${getCurrentGitUser()}`);
-    console.info(`BUILD_SCM_VERSION ${getSCMVersion()}`);
+    console.info(`BUILD_SCM_VERSION ${getSCMVersion(mode)}`);
     process.exit(0);
 }
 /** Run the exec command and return the stdout as a trimmed string. */
@@ -6543,10 +6557,23 @@ function exec$1(cmd) {
 function hasLocalChanges() {
     return !!exec$1(`git status --untracked-files=no --porcelain`);
 }
-/** Get the version based on the most recent semver tag. */
-function getSCMVersion() {
-    const version = exec$1(`git describe --match [0-9]*.[0-9]*.[0-9]* --abbrev=7 --tags HEAD`);
-    return `${version.replace(/-([0-9]+)-g/, '+$1.sha-')}${(hasLocalChanges() ? '.with-local-changes' : '')}`;
+/**
+ * Get the version for generated packages.
+ *
+ * In snapshot mode, the version is based on the most recent semver tag.
+ * In release mode, the version is based on the base package.json version.
+ */
+function getSCMVersion(mode) {
+    if (mode === 'release') {
+        const packageJsonPath = path.join(getRepoBaseDir(), 'package.json');
+        const { version } = require(packageJsonPath);
+        return version;
+    }
+    if (mode === 'snapshot') {
+        const version = exec$1(`git describe --match [0-9]*.[0-9]*.[0-9]* --abbrev=7 --tags HEAD`);
+        return `${version.replace(/-([0-9]+)-g/, '+$1.sha-')}${(hasLocalChanges() ? '.with-local-changes' : '')}`;
+    }
+    return '0.0.0';
 }
 /** Get the current SHA of HEAD. */
 function getCurrentSha() {
@@ -6563,6 +6590,33 @@ function getCurrentGitUser() {
     return `${userName} <${userEmail}>`;
 }
 
+/**
+ * @license
+ * Copyright Google LLC All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
+function builder$a(args) {
+    return args.option('mode', {
+        demandOption: true,
+        description: 'Whether the env-stamp should be built for a snapshot or release',
+        choices: ['snapshot', 'release']
+    });
+}
+function handler$a({ mode }) {
+    return tslib.__awaiter(this, void 0, void 0, function* () {
+        buildEnvStamp(mode);
+    });
+}
+/** CLI command module for building the environment stamp. */
+const BuildEnvStampCommand = {
+    builder: builder$a,
+    handler: handler$a,
+    command: 'build-env-stamp',
+    describe: 'Build the environment stamping information',
+};
+
 /** Build the parser for the release commands. */
 function buildReleaseParser(localYargs) {
     return localYargs.help()
@@ -6571,7 +6625,7 @@ function buildReleaseParser(localYargs) {
         .command(ReleasePublishCommandModule)
         .command(ReleaseBuildCommandModule)
         .command(ReleaseSetDistTagCommand)
-        .command('build-env-stamp', 'Build the environment stamping information', {}, () => buildEnvStamp());
+        .command(BuildEnvStampCommand);
 }
 
 /**

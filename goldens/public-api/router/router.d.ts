@@ -382,6 +382,7 @@ export declare class RouterLink implements OnChanges {
     preserveFragment: boolean;
     queryParams?: Params | null;
     queryParamsHandling?: QueryParamsHandling | null;
+    relativeTo?: ActivatedRoute | null;
     replaceUrl: boolean;
     set routerLink(commands: any[] | string | null | undefined);
     skipLocationChange: boolean;
@@ -414,6 +415,7 @@ export declare class RouterLinkWithHref implements OnChanges, OnDestroy {
     preserveFragment: boolean;
     queryParams?: Params | null;
     queryParamsHandling?: QueryParamsHandling | null;
+    relativeTo?: ActivatedRoute | null;
     replaceUrl: boolean;
     set routerLink(commands: any[] | string | null | undefined);
     skipLocationChange: boolean;

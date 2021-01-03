@@ -230,6 +230,12 @@
             "title": "Angular Playground",
             "url": "https://angularplayground.it/"
           },
+          "angular-prerender": {
+            "desc": "A command line tool to prerender Angular Apps that uses Angular Universal but also supports Scully plugins.",
+            "logo": "https://repository-images.githubusercontent.com/142886533/bd323700-e8ff-11e9-9645-75bc009ee359",
+            "title": "angular-prerender",
+            "url": "https://github.com/chrisguttandin/angular-prerender"
+          },
           "nx": {
             "desc": "Nx (Nrwl Extensions for Angular) is an open source toolkit built on top of Angular CLI to help enterprise teams develop Angular at scale.",
             "title": "Nx",
@@ -602,6 +608,11 @@
             "title": "Ultimate Angular",
             "url": "https://ultimateangular.com/"
           },
+          "angular-pro-screencast": {
+            "desc": "Youtube Channel. Online videos in English and Russian providing in-depth coverage of the Angular advanced topics.",
+            "title": "Angular Pro Screencast",
+            "url": "https://www.youtube.com/playlist?list=PLLf-VBOaoVk1E9fTBZdq1CfnRa2TtL_Kb"
+          },
           "willh-angular-zero": {
             "desc": "Online video course in Chinese for newbies who need to learning from the scratch in Chinese.  It's covering Angular, Angular CLI, TypeScript, VSCode, and some must known knowledge of Angular development.",
             "title": "Angular in Action: Start From Scratch (正體中文)",
@@ -743,6 +754,12 @@
             "logo": "https://angular.de/assets/img/angular-de-logo.svg",
             "title": "Angular.de (German)",
             "url": "https://angular.de/"
+          },
+          "AngularArchitects": {
+            "desc": "In-depth training and consulting with focus on enterprise-scale Angular applications and architecture (remote, on-site company trainings, and public workshops). We also blog about these topics on a regular basis.",
+            "rev": true,
+            "title": "Angular Architects (German and English)",
+            "url": "https://www.angulararchitects.io/"
           }
         }
       }
