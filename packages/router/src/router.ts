@@ -965,7 +965,7 @@ export class Router {
     if (!this.locationSubscription) {
       this.locationSubscription = this.location.subscribe(event => {
         const currentChange = this.extractLocationChangeInfoFromEvent(event);
-        if (this.shouldScheduleNavigation(this.lastLocationChangeInfo, currentChange)) {
+        if (this.shouldScheduleNavigation(currentChange)) {
           // The `setTimeout` was added in #12160 and is likely to support Angular/AngularJS
           // hybrid apps.
           setTimeout(() => {
@@ -1000,26 +1000,12 @@ export class Router {
 
   /**
    * Determines whether two events triggered by the Location subscription are due to the same
-   * navigation. The location subscription can fire two events (popstate and hashchange) for a
-   * single navigation. The second one should be ignored, that is, we should not schedule another
-   * navigation in the Router.
+   * navigation.
+   * Every `hashchange` event triggered by the browser was proceeded by a `popstate`
+   * event. Knowing that; we just need to schedule the `popstate` and cancel the `hashchange`.
    */
-  private shouldScheduleNavigation(previous: LocationChangeInfo|null, current: LocationChangeInfo):
-      boolean {
-    if (!previous) return true;
-
-    const sameDestination = current.urlTree.toString() === previous.urlTree.toString();
-    const eventsOccurredAtSameTime = current.transitionId === previous.transitionId;
-    if (!eventsOccurredAtSameTime || !sameDestination) {
-      return true;
-    }
-
-    if ((current.source === 'hashchange' && previous.source === 'popstate') ||
-        (current.source === 'popstate' && previous.source === 'hashchange')) {
-      return false;
-    }
-
-    return true;
+  private shouldScheduleNavigation(current: LocationChangeInfo): boolean {
+    return current.source !== 'hashchange';
   }
 
   /** The current URL. */

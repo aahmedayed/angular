@@ -1652,6 +1652,7 @@ describe('Integration', () => {
          }
        });
 
+       location.simulateUrlPop('/throwing');
        location.simulateHashChange('/throwing');
        advance(fixture);
 
