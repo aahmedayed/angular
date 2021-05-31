@@ -221,8 +221,6 @@ export declare class NavigationStart extends RouterEvent {
     navigationTrigger?: 'imperative' | 'popstate' | 'hashchange';
     restoredState?: {
         [k: string]: any;
-        navigationId: number;
-        ngRouterPageId?: number;
     } | null;
     constructor(
     id: number,
@@ -230,8 +228,6 @@ export declare class NavigationStart extends RouterEvent {
     navigationTrigger?: 'imperative' | 'popstate' | 'hashchange',
     restoredState?: {
         [k: string]: any;
-        navigationId: number;
-        ngRouterPageId?: number;
     } | null);
     toString(): string;
 }

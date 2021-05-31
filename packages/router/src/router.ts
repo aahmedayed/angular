@@ -232,10 +232,20 @@ function defaultMalformedUriErrorHandler(
   return urlSerializer.parse('/');
 }
 
+/**
+ * @internal
+ */
 export type RestoredState = {
   [k: string]: any,
+  ng: NgState,
+};
+
+/**
+ * @internal
+ */
+export type NgState = {
   navigationId: number,
-  ngRouterPageId?: number,
+  pageId?: number,
 };
 
 /**
@@ -652,11 +662,11 @@ export class Router {
                              tap(t => {
                                if (this.urlUpdateStrategy === 'eager') {
                                  if (!t.extras.skipLocationChange) {
-                                   this.setBrowserUrl(t.urlAfterRedirects, !!t.extras.replaceUrl, {
-                                     ...t.extras.state,
-                                     navigationId: t.id,
-                                     ngRouterPageId: t.targetPageId
-                                   });
+                                   const ngState:
+                                       NgState = {navigationId: t.id, pageId: t.targetPageId};
+                                   this.setBrowserUrl(
+                                       t.urlAfterRedirects, !!t.extras.replaceUrl,
+                                       {...t.extras.state, ng: ngState});
                                  }
                                  this.browserUrlTree = t.urlAfterRedirects;
                                }
@@ -832,11 +842,10 @@ export class Router {
 
                        if (this.urlUpdateStrategy === 'deferred') {
                          if (!t.extras.skipLocationChange) {
-                           this.setBrowserUrl(this.rawUrlTree, !!t.extras.replaceUrl, {
-                             ...t.extras.state,
-                             navigationId: t.id,
-                             ngRouterPageId: t.targetPageId
-                           });
+                           const ngState: NgState = {navigationId: t.id, pageId: t.targetPageId};
+                           this.setBrowserUrl(
+                               this.rawUrlTree, !!t.extras.replaceUrl,
+                               {...t.extras.state, ng: ngState});
                          }
                          this.browserUrlTree = t.urlAfterRedirects;
                        }
@@ -995,8 +1004,7 @@ export class Router {
             const extras: NavigationExtras = {replaceUrl: true};
             if (state) {
               const stateCopy = {...state} as Partial<RestoredState>;
-              delete stateCopy.navigationId;
-              delete stateCopy.ngRouterPageId;
+              delete stateCopy.ng;
               if (Object.keys(stateCopy).length !== 0) {
                 extras.state = stateCopy;
               }
@@ -1014,9 +1022,9 @@ export class Router {
     return {
       source: change['type'] === 'popstate' ? 'popstate' : 'hashchange',
       urlTree: this.parseUrl(change['url']!),
-      // Navigations coming from Angular router have a navigationId state
+      // Navigations coming from Angular router have a ng state
       // property. When this exists, restore the state.
-      state: change.state?.navigationId ? change.state : null,
+      state: change.state?.ng ? change.state : null,
       transitionId: this.getTransition().id
     } as const;
   }
@@ -1384,8 +1392,8 @@ export class Router {
     if (this.canceledNavigationResolution === 'computed') {
       // If the `ngRouterPageId` exist in the state then `targetpageid` should have the value of
       // `ngRouterPageId`
-      if (restoredState && restoredState.ngRouterPageId) {
-        targetPageId = restoredState.ngRouterPageId;
+      if (restoredState && restoredState.ng && restoredState.ng.pageId) {
+        targetPageId = restoredState.ng.pageId;
       } else {
         targetPageId = this.currentPageId + 1;
       }
@@ -1418,7 +1426,6 @@ export class Router {
     const path = this.urlSerializer.serialize(url);
     const stateCopy = this.generateNgRouterState(state);
     if (this.location.isCurrentPathEqualTo(path) || replaceUrl) {
-      // TODO(jasonaden): Remove first `navigationId` and rely on `ng` namespace.
       this.location.replaceState(path, '', stateCopy);
     } else {
       this.location.go(path, '', stateCopy);
@@ -1434,7 +1441,7 @@ export class Router {
 
   private resetUrlToCurrentUrlTree(): void {
     const ngRouterstate = this.generateNgRouterState(
-        {navigationId: this.lastSuccessfulId, ngRouterPageId: this.currentPageId});
+        {ng: {navigationId: this.lastSuccessfulId, pageId: this.currentPageId}});
     this.location.replaceState(this.urlSerializer.serialize(this.rawUrlTree), '', ngRouterstate);
   }
 
@@ -1462,7 +1469,7 @@ export class Router {
 
   private generateNgRouterState(state: RestoredState): RestoredState {
     if (this.canceledNavigationResolution === 'replace') {
-      delete state.ngRouterPageId;
+      delete state.ng.pageId;
     }
     return state;
   }
